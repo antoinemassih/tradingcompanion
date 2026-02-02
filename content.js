@@ -719,7 +719,7 @@
       position: fixed;
       top: ${100 + (orderWindowCounter % 5) * 25}px;
       left: ${150 + (orderWindowCounter % 5) * 25}px;
-      width: 340px;
+      width: 420px;
       background: linear-gradient(145deg, #1e222d, #252932);
       border: 1px solid rgba(255,255,255,0.15);
       border-radius: 6px;
@@ -728,6 +728,23 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       color: #d1d4dc;
     `;
+
+    // Add style to hide number input spinners
+    const style = document.createElement('style');
+    style.textContent = `
+      .tv-order-window input[type=number]::-webkit-inner-spin-button,
+      .tv-order-window input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+      }
+      .tv-order-window input[type=number] {
+        -moz-appearance: textfield;
+      }
+    `;
+    if (!document.getElementById('tv-order-window-styles')) {
+      style.id = 'tv-order-window-styles';
+      document.head.appendChild(style);
+    }
 
     win.innerHTML = `
       <div class="order-header" style="
