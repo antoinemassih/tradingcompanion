@@ -615,6 +615,247 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #4a4e59;
     }
+
+    /* Settings Gear Button */
+    .settings-gear {
+      background: none;
+      border: none;
+      padding: 6px;
+      cursor: pointer;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .settings-gear:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .settings-gear svg {
+      width: 18px;
+      height: 18px;
+      fill: #787b86;
+      transition: fill 0.2s ease;
+    }
+
+    .settings-gear:hover svg {
+      fill: #d1d4dc;
+    }
+
+    /* Settings Modal */
+    .settings-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .settings-modal.active {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .settings-modal-content {
+      background: linear-gradient(180deg, #1e222d 0%, #252932 100%);
+      border: 1px solid #363a45;
+      border-radius: 12px;
+      width: 90%;
+      max-width: 400px;
+      max-height: 80vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .settings-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .settings-modal-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      margin: 0;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      color: #787b86;
+      font-size: 24px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      transition: color 0.2s ease;
+    }
+
+    .modal-close:hover {
+      color: #fff;
+    }
+
+    .settings-modal-body {
+      padding: 20px;
+      overflow-y: auto;
+    }
+
+    /* Orders Tab */
+    .orders-filter {
+      display: flex;
+      gap: 8px;
+    }
+
+    .filter-btn {
+      flex: 1;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid #363a45;
+      border-radius: 6px;
+      color: #787b86;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .filter-btn:hover {
+      background: rgba(255, 255, 255, 0.05);
+      color: #d1d4dc;
+    }
+
+    .filter-btn.active {
+      background: rgba(41, 98, 255, 0.15);
+      border-color: #2962ff;
+      color: #2962ff;
+    }
+
+    .order-list {
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    .order-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      border-left: 3px solid transparent;
+    }
+
+    .order-item.active {
+      border-left-color: #26a69a;
+    }
+
+    .order-item.saved {
+      border-left-color: #ff9800;
+    }
+
+    .order-side {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      margin-right: 10px;
+      min-width: 36px;
+      text-align: center;
+    }
+
+    .order-side.buy {
+      background: rgba(38, 166, 154, 0.2);
+      color: #26a69a;
+    }
+
+    .order-side.sell {
+      background: rgba(239, 83, 80, 0.2);
+      color: #ef5350;
+    }
+
+    .order-info {
+      flex: 1;
+    }
+
+    .order-symbol {
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .order-details {
+      font-size: 10px;
+      color: #787b86;
+      margin-top: 2px;
+    }
+
+    .order-status {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .status-badge {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .status-badge.active {
+      background: rgba(38, 166, 154, 0.2);
+      color: #26a69a;
+    }
+
+    .status-badge.saved {
+      background: rgba(255, 152, 0, 0.2);
+      color: #ff9800;
+    }
+
+    .order-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .order-btn {
+      padding: 4px 8px;
+      border: none;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .order-btn.send {
+      background: #2962ff;
+      color: #fff;
+    }
+
+    .order-btn.send:hover {
+      background: #1e53e4;
+    }
+
+    .order-btn.cancel {
+      background: rgba(239, 83, 80, 0.2);
+      color: #ef5350;
+    }
+
+    .order-btn.cancel:hover {
+      background: rgba(239, 83, 80, 0.3);
+    }
   </style>
 </head>
 <body>
@@ -626,6 +867,9 @@
           <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
         </div>
         TradingView Alerts
+        <button class="settings-gear" id="settingsGear" title="Settings">
+          <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </button>
       </h1>
       <div class="status">
         <div class="status-dot" id="statusDot"></div>
@@ -648,13 +892,14 @@
       Alerts
       <span class="tab-badge" id="alertBadge">0</span>
     </div>
+    <div class="nav-tab" data-tab="orders">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+      Orders
+      <span class="tab-badge" id="ordersBadge">0</span>
+    </div>
     <div class="nav-tab" data-tab="trades">
       <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
       Trades
-    </div>
-    <div class="nav-tab" data-tab="settings">
-      <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
-      Settings
     </div>
   </div>
 
@@ -725,38 +970,58 @@
     </div>
   </div>
 
-  <!-- Settings Tab -->
-  <div class="tab-content" id="settings-tab">
-    <div class="settings-section">
-      <div class="settings-group">
-        <h3>Options API Configuration</h3>
-        <p class="settings-hint" style="margin-bottom: 16px;">Configure a custom API endpoint for options chain data.</p>
-
-        <div class="form-group">
-          <label class="form-label">API URL</label>
-          <input type="text" id="apiUrlInput" placeholder="https://your-api.com/options/{symbol}">
-          <p class="settings-hint">Use {symbol} as placeholder for ticker symbol</p>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">API Key (optional)</label>
-          <input type="password" id="apiKeyInput" placeholder="Enter API key if required">
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">Auth Header Name</label>
-          <input type="text" id="apiHeaderInput" placeholder="X-API-Key" value="X-API-Key">
-        </div>
-
-        <button class="btn btn-primary" id="saveApiSettings">Save Settings</button>
-        <button class="btn btn-secondary" id="testApiBtn" style="margin-top: 10px;">Test API Connection</button>
-
-        <div id="apiTestResult" class="api-test-result"></div>
+  <!-- Orders Tab -->
+  <div class="tab-content" id="orders-tab">
+    <div class="section">
+      <div class="orders-filter">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="active">Active</button>
+        <button class="filter-btn" data-filter="saved">Saved</button>
       </div>
+    </div>
 
-      <div class="settings-group">
-        <h3>Expected API Response</h3>
-        <pre class="code-block">{
+    <div class="section">
+      <div class="order-list" id="orderList"></div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="settings-modal" id="settingsModal">
+    <div class="settings-modal-content">
+      <div class="settings-modal-header">
+        <h2>Settings</h2>
+        <button class="modal-close" id="closeSettings">&times;</button>
+      </div>
+      <div class="settings-modal-body">
+        <div class="settings-group">
+          <h3>Options API Configuration</h3>
+          <p class="settings-hint" style="margin-bottom: 16px;">Configure a custom API endpoint for options chain data.</p>
+
+          <div class="form-group">
+            <label class="form-label">API URL</label>
+            <input type="text" id="apiUrlInput" placeholder="https://your-api.com/options/{symbol}">
+            <p class="settings-hint">Use {symbol} as placeholder for ticker symbol</p>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">API Key (optional)</label>
+            <input type="password" id="apiKeyInput" placeholder="Enter API key if required">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Auth Header Name</label>
+            <input type="text" id="apiHeaderInput" placeholder="X-API-Key" value="X-API-Key">
+          </div>
+
+          <button class="btn btn-primary" id="saveApiSettings">Save Settings</button>
+          <button class="btn btn-secondary" id="testApiBtn" style="margin-top: 10px;">Test API Connection</button>
+
+          <div id="apiTestResult" class="api-test-result"></div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Expected API Response</h3>
+          <pre class="code-block">{
   "symbol": "AAPL",
   "expirationDate": 1704326400,
   "strikes": [180, 185, 190],
@@ -769,6 +1034,7 @@
      "bid": 2.05, "ask": 2.15}
   ]
 }</pre>
+        </div>
       </div>
     </div>
   </div>

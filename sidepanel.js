@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusText = document.getElementById('statusText');
   const currentPriceEl = document.getElementById('currentPrice');
   const currentSymbolEl = document.getElementById('currentSymbol');
+  const settingsGear = document.getElementById('settingsGear');
 
   // Elements - Alerts Tab
   const priceInput = document.getElementById('priceInput');
@@ -15,13 +16,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   const alertList = document.getElementById('alertList');
   const alertBadge = document.getElementById('alertBadge');
 
+  // Elements - Orders Tab
+  const orderList = document.getElementById('orderList');
+  const ordersBadge = document.getElementById('ordersBadge');
+  const filterBtns = document.querySelectorAll('.filter-btn');
+
   // Elements - Trades Tab
   const tradeList = document.getElementById('tradeList');
   const totalTradesEl = document.getElementById('totalTrades');
   const buyCountEl = document.getElementById('buyCount');
   const sellCountEl = document.getElementById('sellCount');
 
-  // Elements - Settings Tab
+  // Elements - Settings Modal
+  const settingsModal = document.getElementById('settingsModal');
+  const closeSettingsBtn = document.getElementById('closeSettings');
   const apiUrlInput = document.getElementById('apiUrlInput');
   const apiKeyInput = document.getElementById('apiKeyInput');
   const apiHeaderInput = document.getElementById('apiHeaderInput');
@@ -40,13 +48,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let currentPrice = null;
   let currentSymbol = '';
+  let currentOrderFilter = 'all';
 
   // Initialize
   await loadAlerts();
+  await loadOrders();
   await loadTrades();
   await loadApiSettings();
   await checkConnection();
   setupTabs();
+  setupSettingsModal();
+  setupOrderFilters();
 
   // Poll for price updates
   setInterval(checkConnection, 2000);
@@ -72,7 +84,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Refresh data when switching tabs
         if (targetTab === 'trades') {
           loadTrades();
+        } else if (targetTab === 'orders') {
+          loadOrders();
         }
+      });
+    });
+  }
+
+  // Setup settings modal
+  function setupSettingsModal() {
+    settingsGear.addEventListener('click', () => {
+      settingsModal.classList.add('active');
+    });
+
+    closeSettingsBtn.addEventListener('click', () => {
+      settingsModal.classList.remove('active');
+    });
+
+    settingsModal.addEventListener('click', (e) => {
+      if (e.target === settingsModal) {
+        settingsModal.classList.remove('active');
+      }
+    });
+  }
+
+  // Setup order filters
+  function setupOrderFilters() {
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentOrderFilter = btn.dataset.filter;
+        loadOrders();
       });
     });
   }
@@ -398,9 +441,120 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (tradesTab.classList.contains('active')) {
       loadTrades();
     }
+    const ordersTab = document.querySelector('.nav-tab[data-tab="orders"]');
+    if (ordersTab.classList.contains('active')) {
+      loadOrders();
+    }
   }, 5000);
 
-  // ============ SETTINGS TAB ============
+  // ============ ORDERS TAB ============
+
+  async function loadOrders() {
+    try {
+      const result = await chrome.storage.local.get(['optionOrders']);
+      let orders = result.optionOrders || [];
+
+      // Apply filter
+      if (currentOrderFilter !== 'all') {
+        orders = orders.filter(o => o.status === currentOrderFilter);
+      }
+
+      renderOrders(orders);
+      updateOrdersBadge();
+    } catch (e) {
+      console.error('Failed to load orders:', e);
+      renderOrders([]);
+    }
+  }
+
+  async function updateOrdersBadge() {
+    const result = await chrome.storage.local.get(['optionOrders']);
+    const orders = result.optionOrders || [];
+    const activeCount = orders.filter(o => o.status === 'active').length;
+    ordersBadge.textContent = activeCount;
+  }
+
+  function renderOrders(orders) {
+    if (orders.length === 0) {
+      orderList.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24">
+            <path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+          </svg>
+          <p>No orders yet</p>
+          <p class="hint">Click options in the chain to create orders</p>
+        </div>
+      `;
+      return;
+    }
+
+    orderList.innerHTML = orders.map(order => {
+      const date = new Date(order.timestamp);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+      return `
+        <div class="order-item ${order.status}" data-id="${order.id}">
+          <div class="order-side ${order.side.toLowerCase()}">${order.side}</div>
+          <div class="order-info">
+            <div class="order-symbol">${order.symbol} ${order.strike}${order.optionType}</div>
+            <div class="order-details">${order.qty}x @ $${order.price} • ${order.orderType.toUpperCase()} • ${order.tif.toUpperCase()}</div>
+          </div>
+          <div class="order-status">
+            <span class="status-badge ${order.status}">${order.status}</span>
+            <div class="order-actions">
+              ${order.status === 'saved' ? `<button class="order-btn send" data-action="send">Send</button>` : ''}
+              <button class="order-btn cancel" data-action="cancel">×</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    // Add event listeners
+    orderList.querySelectorAll('[data-action="send"]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const orderId = e.target.closest('.order-item').dataset.id;
+        await sendOrder(orderId);
+      });
+    });
+
+    orderList.querySelectorAll('[data-action="cancel"]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const orderId = e.target.closest('.order-item').dataset.id;
+        await cancelOrder(orderId);
+      });
+    });
+  }
+
+  async function sendOrder(orderId) {
+    const result = await chrome.storage.local.get(['optionOrders']);
+    let orders = result.optionOrders || [];
+    const orderIndex = orders.findIndex(o => o.id === orderId);
+
+    if (orderIndex !== -1) {
+      orders[orderIndex].status = 'active';
+      orders[orderIndex].sentAt = Date.now();
+      await chrome.storage.local.set({ optionOrders: orders });
+      loadOrders();
+    }
+  }
+
+  async function cancelOrder(orderId) {
+    const result = await chrome.storage.local.get(['optionOrders']);
+    let orders = result.optionOrders || [];
+    orders = orders.filter(o => o.id !== orderId);
+    await chrome.storage.local.set({ optionOrders: orders });
+    loadOrders();
+  }
+
+  // Listen for new orders from content script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'ORDER_CREATED') {
+      loadOrders();
+    }
+  });
+
+  // ============ SETTINGS MODAL ============
 
   async function loadApiSettings() {
     try {

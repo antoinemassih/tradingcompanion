@@ -494,11 +494,17 @@
           </div>
         </div>
 
-        <!-- Row 3: Total + Submit -->
+        <!-- Row 3: Auto toggle + Total + Submit -->
         <div style="display: flex; gap: 6px; align-items: center;">
-          <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(0,0,0,0.2);border-radius:3px;">
-            <span style="font-size:9px;color:#606060;">TOTAL</span>
-            <span class="order-total" style="font-size:11px;font-weight:600;color:#fff;">$${(mid * 100).toFixed(2)}</span>
+          <div class="auto-toggle" style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;cursor:pointer;" title="Auto: Submit order immediately">
+            <span style="font-size:9px;color:#606060;">AUTO</span>
+            <div class="toggle-switch" style="width:24px;height:14px;background:rgba(255,255,255,0.1);border-radius:7px;position:relative;transition:background 0.2s;">
+              <div class="toggle-knob" style="width:10px;height:10px;background:#606060;border-radius:50%;position:absolute;top:2px;left:2px;transition:all 0.2s;"></div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;">
+            <span style="font-size:9px;color:#606060;">$</span>
+            <span class="order-total" style="font-size:11px;font-weight:600;color:#fff;">${(mid * 100).toFixed(2)}</span>
           </div>
           <button class="order-submit" style="flex:1;padding:6px 12px;border:none;border-radius:3px;background:#26a69a;color:#fff;font-weight:600;font-size:11px;cursor:pointer;text-transform:uppercase;">Buy</button>
         </div>
@@ -559,6 +565,25 @@
     buyBtn.onclick = () => updateSide('buy');
     sellBtn.onclick = () => updateSide('sell');
 
+    // Auto toggle
+    const autoToggle = win.querySelector('.auto-toggle');
+    const toggleSwitch = win.querySelector('.toggle-switch');
+    const toggleKnob = win.querySelector('.toggle-knob');
+    let autoSubmit = false;
+
+    autoToggle.onclick = () => {
+      autoSubmit = !autoSubmit;
+      if (autoSubmit) {
+        toggleSwitch.style.background = '#26a69a';
+        toggleKnob.style.left = '12px';
+        toggleKnob.style.background = '#fff';
+      } else {
+        toggleSwitch.style.background = 'rgba(255,255,255,0.1)';
+        toggleKnob.style.left = '2px';
+        toggleKnob.style.background = '#606060';
+      }
+    };
+
     // Order type change - show/hide price input for market orders
     const orderTypeSelect = win.querySelector('.order-type-select');
     const priceRow = win.querySelector('.price-row');
@@ -607,22 +632,59 @@
       const price = orderTypeSelect.value === 'market' ? (currentSide === 'buy' ? ask : bid) : parseFloat(priceInput.value);
       const qty = parseInt(qtyInput.value) || 1;
       const total = price * qty * 100; // Options are 100 shares per contract
-      totalEl.textContent = '$' + total.toFixed(2);
+      totalEl.textContent = total.toFixed(2);
     }
 
     // Submit button hover
     submitBtn.onmouseover = function() { this.style.filter = 'brightness(1.1)'; };
     submitBtn.onmouseout = function() { this.style.filter = 'brightness(1)'; };
-    submitBtn.onclick = () => {
+    submitBtn.onclick = async () => {
       const orderType = orderTypeSelect.value;
       const tif = win.querySelector('.order-tif-select').value;
-      const price = orderType === 'market' ? 'MKT' : priceInput.value;
-      const qty = qtyInput.value;
-      showToast(
-        `<strong>Order Preview</strong><br>${currentSide.toUpperCase()} ${qty}x ${symbol} ${strike} ${optType}<br>${orderType.toUpperCase()} @ ${price} | ${tif.toUpperCase()}`,
-        currentSide === 'buy' ? 'above' : 'below',
-        4000
-      );
+      const price = orderType === 'market' ? (currentSide === 'buy' ? ask : bid) : parseFloat(priceInput.value);
+      const qty = parseInt(qtyInput.value) || 1;
+
+      // Create order object
+      const order = {
+        id: `order-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        symbol: symbol,
+        strike: strike,
+        optionType: optType,
+        side: currentSide.toUpperCase(),
+        orderType: orderType,
+        tif: tif,
+        price: price,
+        qty: qty,
+        total: price * qty * 100,
+        status: autoSubmit ? 'active' : 'saved',
+        timestamp: Date.now()
+      };
+
+      // Save to chrome storage
+      try {
+        const result = await chrome.storage.local.get(['optionOrders']);
+        const orders = result.optionOrders || [];
+        orders.unshift(order); // Add to beginning
+        await chrome.storage.local.set({ optionOrders: orders });
+
+        // Notify sidepanel
+        chrome.runtime.sendMessage({ type: 'ORDER_CREATED', order: order }).catch(() => {});
+
+        // Show toast
+        const statusText = autoSubmit ? 'SUBMITTED' : 'SAVED';
+        const statusColor = autoSubmit ? '#26a69a' : '#ff9800';
+        showToast(
+          `<strong style="color:${statusColor}">${statusText}</strong><br>${order.side} ${qty}x ${symbol} ${strike}${optType}<br>${orderType.toUpperCase()} @ $${price.toFixed(2)}`,
+          currentSide === 'buy' ? 'above' : 'below',
+          3000
+        );
+
+        // Close window after submit
+        win.remove();
+      } catch (e) {
+        console.error('[TV-Alert] Failed to save order:', e);
+        showToast('<strong style="color:#ef5350">Error</strong><br>Failed to save order', 'below', 3000);
+      }
     };
 
     // Button hover effects
