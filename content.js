@@ -19,6 +19,14 @@
   let optionsDataSource = null; // 'api', 'yahoo', or 'mock'
   let orderWindowCounter = 0; // For unique order window IDs
 
+  // Dual column options chain state
+  let dualColumnMode = false;
+  let availableExpirations = [];
+  let optionsDataCol1 = null;
+  let optionsDataCol2 = null;
+  let selectedExpiryIdx1 = 0;
+  let selectedExpiryIdx2 = 1;
+
   // Initialize the extension
   function init() {
     console.log('[TV-Alert] Content script initialized');
@@ -59,7 +67,7 @@
       position: fixed;
       top: 100px;
       right: 60px;
-      width: 160px;
+      width: 180px;
       max-height: calc(100vh - 200px);
       background: rgba(20, 23, 31, 0.97);
       border-radius: 8px;
@@ -77,7 +85,7 @@
     const header = document.createElement('div');
     header.id = 'options-header';
     header.style.cssText = `
-      padding: 8px 10px;
+      padding: 6px 8px;
       background: linear-gradient(135deg, rgba(41, 98, 255, 0.3), rgba(156, 39, 176, 0.2));
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
       display: flex;
@@ -89,29 +97,69 @@
       <div style="display: flex; align-items: center; gap: 6px;">
         <span style="font-size: 11px; font-weight: 600; color: #fff;">TONYC</span>
         <span id="options-source" style="font-size: 8px; padding: 1px 4px; border-radius: 3px; cursor: help; display: none;"></span>
-        <span id="options-expiry" style="font-size: 9px; color: #a0a0a0;"></span>
       </div>
-      <button id="options-toggle" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;">−</button>
+      <div style="display: flex; align-items: center; gap: 4px;">
+        <button id="dual-mode-toggle" title="Toggle dual expiry view" style="background: rgba(255,255,255,0.1); border: none; color: #808080; cursor: pointer; font-size: 10px; padding: 2px 5px; border-radius: 3px; font-weight: 600;">2x</button>
+        <button id="options-toggle" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 14px; padding: 0 2px; line-height: 1;">−</button>
+      </div>
     `;
     panel.appendChild(header);
+
+    // Date selector row (for column 1, or single mode)
+    const dateRow1 = document.createElement('div');
+    dateRow1.id = 'date-row-1';
+    dateRow1.style.cssText = `
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 6px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 4px;
+    `;
+    dateRow1.innerHTML = `
+      <button class="date-nav prev-date" data-col="1" style="background:none;border:none;color:#606060;cursor:pointer;font-size:12px;padding:2px 4px;">◀</button>
+      <select id="expiry-select-1" style="flex:1;padding:2px 4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:#d1d4dc;font-size:9px;cursor:pointer;text-align:center;"></select>
+      <button class="date-nav next-date" data-col="1" style="background:none;border:none;color:#606060;cursor:pointer;font-size:12px;padding:2px 4px;">▶</button>
+    `;
+    panel.appendChild(dateRow1);
+
+    // Date selector row 2 (for dual mode only)
+    const dateRow2 = document.createElement('div');
+    dateRow2.id = 'date-row-2';
+    dateRow2.style.cssText = `
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 6px;
+      background: rgba(156, 39, 176, 0.1);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 4px;
+    `;
+    dateRow2.innerHTML = `
+      <button class="date-nav prev-date" data-col="2" style="background:none;border:none;color:#606060;cursor:pointer;font-size:12px;padding:2px 4px;">◀</button>
+      <select id="expiry-select-2" style="flex:1;padding:2px 4px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.1);border-radius:3px;color:#d1d4dc;font-size:9px;cursor:pointer;text-align:center;"></select>
+      <button class="date-nav next-date" data-col="2" style="background:none;border:none;color:#606060;cursor:pointer;font-size:12px;padding:2px 4px;">▶</button>
+    `;
+    panel.appendChild(dateRow2);
 
     // Column headers
     const colHeaders = document.createElement('div');
     colHeaders.id = 'options-col-headers';
     colHeaders.style.cssText = `
       display: flex;
-      padding: 6px 8px;
+      padding: 4px 6px;
       background: rgba(255, 255, 255, 0.05);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      font-size: 9px;
+      font-size: 8px;
       color: #a0a0a0;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     `;
     colHeaders.innerHTML = `
-      <div style="flex: 1; text-align: center; color: #26a69a;">Call</div>
-      <div style="width: 50px; text-align: center;">Strike</div>
-      <div style="flex: 1; text-align: center; color: #ef5350;">Put</div>
+      <div style="flex: 1; text-align: center; color: #26a69a;">C</div>
+      <div style="width: 44px; text-align: center;">Strike</div>
+      <div style="flex: 1; text-align: center; color: #ef5350;">P</div>
     `;
     panel.appendChild(colHeaders);
 
@@ -129,13 +177,62 @@
     document.body.appendChild(panel);
     optionsPanel = panel;
 
-    // Toggle button
+    // Toggle collapse button
     document.getElementById('options-toggle').onclick = () => {
       optionsVisible = !optionsVisible;
+      document.getElementById('date-row-1').style.display = optionsVisible ? 'flex' : 'none';
+      document.getElementById('date-row-2').style.display = optionsVisible && dualColumnMode ? 'flex' : 'none';
       document.getElementById('options-col-headers').style.display = optionsVisible ? 'flex' : 'none';
       document.getElementById('options-list').style.display = optionsVisible ? 'block' : 'none';
       document.getElementById('options-toggle').textContent = optionsVisible ? '−' : '+';
     };
+
+    // Dual mode toggle
+    document.getElementById('dual-mode-toggle').onclick = () => {
+      dualColumnMode = !dualColumnMode;
+      const btn = document.getElementById('dual-mode-toggle');
+      btn.style.background = dualColumnMode ? '#2962ff' : 'rgba(255,255,255,0.1)';
+      btn.style.color = dualColumnMode ? '#fff' : '#808080';
+      document.getElementById('date-row-2').style.display = dualColumnMode ? 'flex' : 'none';
+      panel.style.width = dualColumnMode ? '320px' : '180px';
+      updateColumnHeaders();
+      renderOptionsChain();
+    };
+
+    // Date navigation buttons
+    panel.querySelectorAll('.prev-date').forEach(btn => {
+      btn.onclick = () => {
+        const col = btn.dataset.col;
+        if (col === '1' && selectedExpiryIdx1 > 0) {
+          selectedExpiryIdx1--;
+          document.getElementById('expiry-select-1').selectedIndex = selectedExpiryIdx1;
+          fetchOptionsForExpiry(1);
+        } else if (col === '2' && selectedExpiryIdx2 > 0) {
+          selectedExpiryIdx2--;
+          document.getElementById('expiry-select-2').selectedIndex = selectedExpiryIdx2;
+          fetchOptionsForExpiry(2);
+        }
+      };
+      btn.onmouseover = function() { this.style.color = '#fff'; };
+      btn.onmouseout = function() { this.style.color = '#606060'; };
+    });
+
+    panel.querySelectorAll('.next-date').forEach(btn => {
+      btn.onclick = () => {
+        const col = btn.dataset.col;
+        if (col === '1' && selectedExpiryIdx1 < availableExpirations.length - 1) {
+          selectedExpiryIdx1++;
+          document.getElementById('expiry-select-1').selectedIndex = selectedExpiryIdx1;
+          fetchOptionsForExpiry(1);
+        } else if (col === '2' && selectedExpiryIdx2 < availableExpirations.length - 1) {
+          selectedExpiryIdx2++;
+          document.getElementById('expiry-select-2').selectedIndex = selectedExpiryIdx2;
+          fetchOptionsForExpiry(2);
+        }
+      };
+      btn.onmouseover = function() { this.style.color = '#fff'; };
+      btn.onmouseout = function() { this.style.color = '#606060'; };
+    });
 
     // Make draggable
     makeDraggable(panel, header);
@@ -151,6 +248,53 @@
         fetchOptionsData(currentSymbol);
       }
     }, 3000);
+  }
+
+  function updateColumnHeaders() {
+    const colHeaders = document.getElementById('options-col-headers');
+    if (dualColumnMode) {
+      colHeaders.innerHTML = `
+        <div style="flex: 1; text-align: center; color: #26a69a; font-size: 8px;">C1</div>
+        <div style="flex: 1; text-align: center; color: #ef5350; font-size: 8px;">P1</div>
+        <div style="width: 40px; text-align: center; font-size: 8px;">STK</div>
+        <div style="flex: 1; text-align: center; color: #26a69a; font-size: 8px;">C2</div>
+        <div style="flex: 1; text-align: center; color: #ef5350; font-size: 8px;">P2</div>
+      `;
+    } else {
+      colHeaders.innerHTML = `
+        <div style="flex: 1; text-align: center; color: #26a69a;">C</div>
+        <div style="width: 44px; text-align: center;">Strike</div>
+        <div style="flex: 1; text-align: center; color: #ef5350;">P</div>
+      `;
+    }
+  }
+
+  function populateExpirySelects() {
+    const select1 = document.getElementById('expiry-select-1');
+    const select2 = document.getElementById('expiry-select-2');
+    if (!select1) return;
+
+    const options = availableExpirations.map((exp, idx) => {
+      const d = new Date(exp * 1000);
+      const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+      return `<option value="${idx}">${label}</option>`;
+    }).join('');
+
+    select1.innerHTML = options;
+    select2.innerHTML = options;
+
+    select1.selectedIndex = selectedExpiryIdx1;
+    select2.selectedIndex = Math.min(selectedExpiryIdx2, availableExpirations.length - 1);
+
+    select1.onchange = () => {
+      selectedExpiryIdx1 = parseInt(select1.value);
+      fetchOptionsForExpiry(1);
+    };
+
+    select2.onchange = () => {
+      selectedExpiryIdx2 = parseInt(select2.value);
+      fetchOptionsForExpiry(2);
+    };
   }
 
   function makeDraggable(el, handle) {
@@ -175,7 +319,6 @@
     lastOptionsSymbol = cleanSymbol;
 
     const loading = document.getElementById('options-loading');
-    const list = document.getElementById('options-list');
     if (loading) {
       loading.style.display = 'block';
       loading.textContent = `Loading ${cleanSymbol}...`;
@@ -198,13 +341,19 @@
 
         // Handle direct format (expected from custom API)
         if (data.strikes || data.calls || data.puts) {
-          optionsData = {
+          availableExpirations = data.expirationDates || [data.expirationDate];
+          selectedExpiryIdx1 = 0;
+          selectedExpiryIdx2 = Math.min(1, availableExpirations.length - 1);
+          populateExpirySelects();
+
+          optionsDataCol1 = {
             symbol: data.symbol || cleanSymbol,
             expirationDate: data.expirationDate,
             strikes: data.strikes || [],
             calls: data.calls || [],
             puts: data.puts || []
           };
+          optionsData = optionsDataCol1;
           optionsDataSource = 'api';
           renderOptionsChain();
           console.log('[TV-Alert] Loaded options from custom API');
@@ -223,14 +372,26 @@
 
       if (data.optionChain?.result?.[0]) {
         const result = data.optionChain.result[0];
-        optionsData = {
+        availableExpirations = result.expirationDates || [];
+        selectedExpiryIdx1 = 0;
+        selectedExpiryIdx2 = Math.min(1, availableExpirations.length - 1);
+        populateExpirySelects();
+
+        optionsDataCol1 = {
           symbol: cleanSymbol,
           expirationDate: result.expirationDates?.[0],
           strikes: result.strikes || [],
           calls: result.options?.[0]?.calls || [],
           puts: result.options?.[0]?.puts || []
         };
+        optionsData = optionsDataCol1;
         optionsDataSource = 'yahoo';
+
+        // If dual mode, fetch second expiry
+        if (dualColumnMode && availableExpirations.length > 1) {
+          await fetchOptionsForExpiry(2);
+        }
+
         renderOptionsChain();
         return;
       }
@@ -240,6 +401,43 @@
 
     // Generate mock data as last resort
     generateMockOptions(cleanSymbol);
+  }
+
+  async function fetchOptionsForExpiry(column) {
+    const cleanSymbol = lastOptionsSymbol;
+    const expiryIdx = column === 1 ? selectedExpiryIdx1 : selectedExpiryIdx2;
+    const expiry = availableExpirations[expiryIdx];
+
+    if (!expiry) return;
+
+    try {
+      // Yahoo Finance with specific expiration
+      const resp = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${cleanSymbol}?date=${expiry}`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const data = await resp.json();
+
+      if (data.optionChain?.result?.[0]) {
+        const result = data.optionChain.result[0];
+        const colData = {
+          symbol: cleanSymbol,
+          expirationDate: expiry,
+          strikes: result.strikes || [],
+          calls: result.options?.[0]?.calls || [],
+          puts: result.options?.[0]?.puts || []
+        };
+
+        if (column === 1) {
+          optionsDataCol1 = colData;
+          optionsData = colData;
+        } else {
+          optionsDataCol2 = colData;
+        }
+
+        renderOptionsChain();
+      }
+    } catch (e) {
+      console.log(`[TV-Alert] Failed to fetch expiry for column ${column}:`, e.message);
+    }
   }
 
   function generateMockOptions(symbol) {
@@ -305,87 +503,175 @@
   }
 
   function renderOptionsChain() {
-    if (!optionsData) return;
+    const data1 = optionsDataCol1 || optionsData;
+    if (!data1) return;
     updateSourceIndicator();
 
     const list = document.getElementById('options-list');
-    const expEl = document.getElementById('options-expiry');
     const loading = document.getElementById('options-loading');
     if (loading) loading.style.display = 'none';
 
-    if (expEl && optionsData.expirationDate) {
-      const d = new Date(optionsData.expirationDate * 1000);
-      expEl.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + (optionsData.isMock ? ' *' : '');
+    // Build maps for column 1
+    const callMap1 = {}, putMap1 = {};
+    data1.calls.forEach(c => callMap1[c.strike] = c);
+    data1.puts.forEach(p => putMap1[p.strike] = p);
+
+    // Build maps for column 2 (dual mode)
+    const callMap2 = {}, putMap2 = {};
+    if (dualColumnMode && optionsDataCol2) {
+      optionsDataCol2.calls.forEach(c => callMap2[c.strike] = c);
+      optionsDataCol2.puts.forEach(p => putMap2[p.strike] = p);
     }
 
-    const callMap = {}, putMap = {};
-    optionsData.calls.forEach(c => callMap[c.strike] = c);
-    optionsData.puts.forEach(p => putMap[p.strike] = p);
+    // Get all unique strikes from both columns
+    let allStrikes = [...data1.strikes];
+    if (dualColumnMode && optionsDataCol2) {
+      optionsDataCol2.strikes.forEach(s => {
+        if (!allStrikes.includes(s)) allStrikes.push(s);
+      });
+    }
 
-    const visible = optionsData.strikes.filter(s => {
+    const visible = allStrikes.filter(s => {
       if (!currentPrice) return true;
       return Math.abs(s - currentPrice) / currentPrice < 0.12;
     }).sort((a, b) => b - a);
 
     let html = '';
-    visible.forEach(strike => {
-      const call = callMap[strike];
-      const put = putMap[strike];
-      const isATM = currentPrice && Math.abs(strike - currentPrice) < currentPrice * 0.008;
-      const itmCall = currentPrice && strike < currentPrice;
-      const itmPut = currentPrice && strike > currentPrice;
 
-      html += `
-        <div class="opt-row" data-strike="${strike}" style="
-          display: flex; align-items: center;
-          padding: 4px 6px;
-          border-bottom: 1px solid rgba(255,255,255,0.05);
-          ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 3px solid #2962ff;' : ''}
-          transition: background 0.15s;
-        " onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='${isATM ? 'linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1))' : ''}'">
-          <div class="opt-call" data-type="call" style="
-            flex: 1; text-align: center;
-            padding: 3px 4px; margin: 1px;
-            border-radius: 4px;
-            font-size: 11px; font-weight: 500;
-            cursor: pointer;
-            background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
-            color: #26a69a;
-            transition: all 0.15s;
-          " title="C ${strike}: ${call?.bid?.toFixed(2) || '-'} / ${call?.ask?.toFixed(2) || '-'}">${call ? fmtOpt(call.lastPrice) : '-'}</div>
-          <div style="
-            width: 48px; text-align: center;
-            font-size: 11px; font-weight: 600;
-            color: ${isATM ? '#fff' : '#d1d4dc'};
-          ">${strike}</div>
-          <div class="opt-put" data-type="put" style="
-            flex: 1; text-align: center;
-            padding: 3px 4px; margin: 1px;
-            border-radius: 4px;
-            font-size: 11px; font-weight: 500;
-            cursor: pointer;
-            background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
-            color: #ef5350;
-            transition: all 0.15s;
-          " title="P ${strike}: ${put?.bid?.toFixed(2) || '-'} / ${put?.ask?.toFixed(2) || '-'}">${put ? fmtOpt(put.lastPrice) : '-'}</div>
-        </div>
-      `;
-    });
+    if (dualColumnMode) {
+      // Dual column layout
+      visible.forEach(strike => {
+        const call1 = callMap1[strike];
+        const put1 = putMap1[strike];
+        const call2 = callMap2[strike];
+        const put2 = putMap2[strike];
+        const isATM = currentPrice && Math.abs(strike - currentPrice) < currentPrice * 0.008;
+        const itmCall = currentPrice && strike < currentPrice;
+        const itmPut = currentPrice && strike > currentPrice;
+
+        html += `
+          <div class="opt-row" data-strike="${strike}" style="
+            display: flex; align-items: center;
+            padding: 3px 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 2px solid #2962ff;' : ''}
+          ">
+            <div class="opt-cell opt-call" data-type="call" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 2px; margin: 1px;
+              border-radius: 3px;
+              font-size: 10px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
+              color: #26a69a;
+            " title="C1 ${strike}: ${call1?.bid?.toFixed(2) || '-'}/${call1?.ask?.toFixed(2) || '-'}">${call1 ? fmtOpt(call1.lastPrice) : '-'}</div>
+            <div class="opt-cell opt-put" data-type="put" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 2px; margin: 1px;
+              border-radius: 3px;
+              font-size: 10px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
+              color: #ef5350;
+            " title="P1 ${strike}: ${put1?.bid?.toFixed(2) || '-'}/${put1?.ask?.toFixed(2) || '-'}">${put1 ? fmtOpt(put1.lastPrice) : '-'}</div>
+            <div style="
+              width: 36px; text-align: center;
+              font-size: 10px; font-weight: 600;
+              color: ${isATM ? '#fff' : '#d1d4dc'};
+            ">${strike}</div>
+            <div class="opt-cell opt-call" data-type="call" data-col="2" style="
+              flex: 1; text-align: center;
+              padding: 2px; margin: 1px;
+              border-radius: 3px;
+              font-size: 10px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
+              color: #26a69a;
+            " title="C2 ${strike}: ${call2?.bid?.toFixed(2) || '-'}/${call2?.ask?.toFixed(2) || '-'}">${call2 ? fmtOpt(call2.lastPrice) : '-'}</div>
+            <div class="opt-cell opt-put" data-type="put" data-col="2" style="
+              flex: 1; text-align: center;
+              padding: 2px; margin: 1px;
+              border-radius: 3px;
+              font-size: 10px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
+              color: #ef5350;
+            " title="P2 ${strike}: ${put2?.bid?.toFixed(2) || '-'}/${put2?.ask?.toFixed(2) || '-'}">${put2 ? fmtOpt(put2.lastPrice) : '-'}</div>
+          </div>
+        `;
+      });
+    } else {
+      // Single column layout
+      visible.forEach(strike => {
+        const call = callMap1[strike];
+        const put = putMap1[strike];
+        const isATM = currentPrice && Math.abs(strike - currentPrice) < currentPrice * 0.008;
+        const itmCall = currentPrice && strike < currentPrice;
+        const itmPut = currentPrice && strike > currentPrice;
+
+        html += `
+          <div class="opt-row" data-strike="${strike}" style="
+            display: flex; align-items: center;
+            padding: 4px 6px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 3px solid #2962ff;' : ''}
+            transition: background 0.15s;
+          " onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='${isATM ? 'linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1))' : ''}'">
+            <div class="opt-cell opt-call" data-type="call" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
+              color: #26a69a;
+              transition: all 0.15s;
+            " title="C ${strike}: ${call?.bid?.toFixed(2) || '-'} / ${call?.ask?.toFixed(2) || '-'}">${call ? fmtOpt(call.lastPrice) : '-'}</div>
+            <div style="
+              width: 48px; text-align: center;
+              font-size: 11px; font-weight: 600;
+              color: ${isATM ? '#fff' : '#d1d4dc'};
+            ">${strike}</div>
+            <div class="opt-cell opt-put" data-type="put" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
+              color: #ef5350;
+              transition: all 0.15s;
+            " title="P ${strike}: ${put?.bid?.toFixed(2) || '-'} / ${put?.ask?.toFixed(2) || '-'}">${put ? fmtOpt(put.lastPrice) : '-'}</div>
+          </div>
+        `;
+      });
+    }
 
     list.innerHTML = html;
 
     // Click handlers
-    list.querySelectorAll('.opt-call, .opt-put').forEach(el => {
+    list.querySelectorAll('.opt-cell').forEach(el => {
       el.onclick = (e) => {
         const row = e.target.closest('.opt-row');
         const strike = +row.dataset.strike;
         const isCall = e.target.dataset.type === 'call';
-        const opt = isCall ? callMap[strike] : putMap[strike];
+        const col = e.target.dataset.col;
+
+        // Get option from correct column
+        let opt;
+        if (col === '2' && dualColumnMode) {
+          opt = isCall ? callMap2[strike] : putMap2[strike];
+        } else {
+          opt = isCall ? callMap1[strike] : putMap1[strike];
+        }
+
         if (opt) {
-          createOrderWindow(opt, isCall, strike);
+          // Pass expiration date for the order window
+          const expDate = col === '2' ? optionsDataCol2?.expirationDate : data1.expirationDate;
+          createOrderWindow(opt, isCall, strike, expDate);
         }
       };
-      el.onmouseover = () => el.style.transform = 'scale(1.05)';
+      el.onmouseover = () => el.style.transform = 'scale(1.03)';
       el.onmouseout = () => el.style.transform = 'scale(1)';
     });
 
@@ -406,7 +692,7 @@
     return p >= 10 ? p.toFixed(1) : p.toFixed(2);
   }
 
-  function createOrderWindow(optionData, isCall, strike) {
+  function createOrderWindow(optionData, isCall, strike, expirationDate) {
     orderWindowCounter++;
     const windowId = `order-window-${orderWindowCounter}`;
     const symbol = optionsData?.symbol || currentSymbol;
@@ -416,6 +702,13 @@
     const bid = optionData?.bid || 0;
     const ask = optionData?.ask || 0;
     const mid = ((bid + ask) / 2) || optionData?.lastPrice || 0;
+
+    // Format expiration date
+    let expLabel = '';
+    if (expirationDate) {
+      const d = new Date(expirationDate * 1000);
+      expLabel = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
 
     const win = document.createElement('div');
     win.id = windowId;
@@ -443,9 +736,10 @@
         justify-content: space-between;
         align-items: center;
       ">
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 6px;">
           <span style="font-size: 11px; font-weight: 600; color: #fff;">${symbol}</span>
           <span style="font-size: 10px; color: ${optColor}; font-weight: 600;">${strike}${optType}</span>
+          ${expLabel ? `<span style="font-size: 9px; color: #a0a0a0;">${expLabel}</span>` : ''}
           <span style="font-size: 9px; color: #26a69a;">${bid.toFixed(2)}</span>
           <span style="font-size: 9px; color: #606060;">/</span>
           <span style="font-size: 9px; color: #ef5350;">${ask.toFixed(2)}</span>
