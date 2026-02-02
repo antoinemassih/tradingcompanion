@@ -805,13 +805,15 @@
 
           <!-- Row 2: Price + Qty + Presets -->
           <div style="display: flex; gap: 6px; align-items: center;">
-            <div class="price-row" style="display:flex;align-items:center;gap:4px;">
-              <span style="font-size:9px;color:#606060;">@</span>
-              <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:60px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            <div class="price-row" style="display:flex;align-items:center;gap:2px;">
+              <button class="price-btn price-down" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">−</button>
+              <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:58px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+              <button class="price-btn price-up" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">+</button>
             </div>
-            <div style="display:flex;align-items:center;gap:4px;">
-              <span style="font-size:9px;color:#606060;">x</span>
-              <input type="number" class="qty-input" value="1" min="1" step="1" style="width:40px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            <div style="display:flex;align-items:center;gap:2px;">
+              <button class="qty-btn qty-down" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">−</button>
+              <input type="number" class="qty-input" value="1" min="1" step="1" style="width:36px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+              <button class="qty-btn qty-up" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">+</button>
             </div>
             <div style="display:flex;gap:2px;">
               <button class="qty-preset" data-qty="1" style="padding:4px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">1</button>
@@ -920,9 +922,18 @@
       updateTotal();
     };
 
-    // Price input
+    // Price input and +/- buttons
     const priceInput = win.querySelector('.price-input');
     priceInput.oninput = updateTotal;
+
+    win.querySelector('.price-down').onclick = () => {
+      priceInput.value = Math.max(0.01, parseFloat(priceInput.value) - 0.05).toFixed(2);
+      updateTotal();
+    };
+    win.querySelector('.price-up').onclick = () => {
+      priceInput.value = (parseFloat(priceInput.value) + 0.05).toFixed(2);
+      updateTotal();
+    };
 
     // Bid/Ask buttons - click to set price
     const bidBtn = win.querySelector('.bid-btn');
@@ -940,9 +951,24 @@
     askBtn.onmouseover = function() { this.style.background = 'rgba(239,83,80,0.35)'; };
     askBtn.onmouseout = function() { this.style.background = 'rgba(239,83,80,0.2)'; };
 
-    // Quantity input
+    // Quantity input and +/- buttons
     const qtyInput = win.querySelector('.qty-input');
     qtyInput.oninput = updateTotal;
+
+    win.querySelector('.qty-down').onclick = () => {
+      qtyInput.value = Math.max(1, parseInt(qtyInput.value) - 1);
+      updateTotal();
+    };
+    win.querySelector('.qty-up').onclick = () => {
+      qtyInput.value = parseInt(qtyInput.value) + 1;
+      updateTotal();
+    };
+
+    // +/- button hover effects
+    win.querySelectorAll('.price-btn, .qty-btn').forEach(btn => {
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.15)'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.3)'; };
+    });
 
     // Quantity presets
     win.querySelectorAll('.qty-preset').forEach(btn => {
