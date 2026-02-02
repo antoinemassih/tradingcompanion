@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradingView Price Alerts</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 350px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e222d;
+      color: #d1d4dc;
+      font-size: 13px;
+    }
+
+    .header {
+      background: #2a2e39;
+      padding: 12px 16px;
+      border-bottom: 1px solid #363a45;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header .logo {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #ff9800, #f57c00);
+      border-radius: 4px;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #787b86;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #787b86;
+    }
+
+    .status-dot.active {
+      background: #26a69a;
+      box-shadow: 0 0 6px #26a69a;
+    }
+
+    .current-price {
+      background: #2a2e39;
+      padding: 12px 16px;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .current-price .label {
+      font-size: 11px;
+      color: #787b86;
+      margin-bottom: 4px;
+    }
+
+    .current-price .value {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .current-price .symbol {
+      color: #787b86;
+      font-size: 12px;
+      margin-left: 8px;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: #252930;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 12px 16px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #787b86;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .tab:hover {
+      color: #d1d4dc;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab.active {
+      color: #2962ff;
+      border-bottom-color: #2962ff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    .add-section {
+      padding: 12px 16px;
+      background: #252930;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .add-section h3 {
+      font-size: 12px;
+      color: #787b86;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .input-group {
+      flex: 1;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 11px;
+      color: #787b86;
+      margin-bottom: 4px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 8px 10px;
+      background: #1e222d;
+      border: 1px solid #363a45;
+      border-radius: 4px;
+      color: #d1d4dc;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    input:focus, select:focus {
+      border-color: #2962ff;
+    }
+
+    input[type="color"] {
+      padding: 2px;
+      height: 34px;
+      cursor: pointer;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background: #2962ff;
+      color: white;
+      width: 100%;
+    }
+
+    .btn-primary:hover {
+      background: #1e53e4;
+    }
+
+    .btn-danger {
+      background: #ef5350;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #e53935;
+    }
+
+    .btn-icon {
+      background: transparent;
+      color: #787b86;
+      padding: 4px 8px;
+    }
+
+    .btn-icon:hover {
+      color: #d1d4dc;
+    }
+
+    .levels-section {
+      max-height: 250px;
+      overflow-y: auto;
+    }
+
+    .levels-section h3 {
+      font-size: 12px;
+      color: #787b86;
+      padding: 12px 16px 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      position: sticky;
+      top: 0;
+      background: #1e222d;
+    }
+
+    .level-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #2a2e39;
+      transition: background 0.2s;
+    }
+
+    .level-item:hover {
+      background: #252930;
+    }
+
+    .level-color {
+      width: 4px;
+      height: 32px;
+      border-radius: 2px;
+      margin-right: 12px;
+    }
+
+    .level-info {
+      flex: 1;
+    }
+
+    .level-price {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .level-meta {
+      font-size: 11px;
+      color: #787b86;
+      margin-top: 2px;
+    }
+
+    .level-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .toggle-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+
+    .toggle-btn:hover {
+      background: #363a45;
+    }
+
+    .toggle-btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .toggle-btn.enabled svg {
+      fill: #26a69a;
+    }
+
+    .toggle-btn.disabled svg {
+      fill: #787b86;
+    }
+
+    .delete-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      color: #787b86;
+      transition: color 0.2s, background 0.2s;
+    }
+
+    .delete-btn:hover {
+      color: #ef5350;
+      background: rgba(239, 83, 80, 0.1);
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: #787b86;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      fill: #363a45;
+      margin-bottom: 12px;
+    }
+
+    /* Trade History Styles */
+    .trades-section {
+      max-height: 350px;
+      overflow-y: auto;
+    }
+
+    .trades-section h3 {
+      font-size: 12px;
+      color: #787b86;
+      padding: 12px 16px 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      position: sticky;
+      top: 0;
+      background: #1e222d;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .trade-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #2a2e39;
+      transition: background 0.2s;
+    }
+
+    .trade-item:hover {
+      background: #252930;
+    }
+
+    .trade-side {
+      width: 50px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      margin-right: 12px;
+    }
+
+    .trade-side.buy {
+      background: rgba(38, 166, 154, 0.2);
+      color: #26a69a;
+    }
+
+    .trade-side.sell {
+      background: rgba(239, 83, 80, 0.2);
+      color: #ef5350;
+    }
+
+    .trade-info {
+      flex: 1;
+    }
+
+    .trade-symbol {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .trade-price {
+      font-size: 12px;
+      color: #d1d4dc;
+      margin-top: 2px;
+    }
+
+    .trade-time {
+      font-size: 11px;
+      color: #787b86;
+      text-align: right;
+    }
+
+    .trade-date {
+      font-size: 10px;
+      color: #5d606b;
+    }
+
+    /* Stats Summary */
+    .stats-summary {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #252930;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .stat-box {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      background: #1e222d;
+      border-radius: 6px;
+    }
+
+    .stat-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .stat-value.buy {
+      color: #26a69a;
+    }
+
+    .stat-value.sell {
+      color: #ef5350;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #787b86;
+      margin-top: 2px;
+      text-transform: uppercase;
+    }
+
+    .footer {
+      padding: 12px 16px;
+      border-top: 1px solid #363a45;
+      text-align: center;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+    }
+
+    .footer a {
+      color: #787b86;
+      font-size: 11px;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      color: #d1d4dc;
+    }
+
+    /* Settings Styles */
+    .settings-section {
+      padding: 16px;
+      border-bottom: 1px solid #363a45;
+    }
+
+    .settings-section h3 {
+      font-size: 12px;
+      color: #d1d4dc;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .settings-desc {
+      font-size: 11px;
+      color: #787b86;
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .input-hint {
+      display: block;
+      font-size: 10px;
+      color: #5d606b;
+      margin-top: 4px;
+    }
+
+    .btn-secondary {
+      background: #363a45;
+      color: #d1d4dc;
+      width: 100%;
+    }
+
+    .btn-secondary:hover {
+      background: #4a4e59;
+    }
+
+    .api-test-result {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      display: none;
+    }
+
+    .api-test-result.success {
+      display: block;
+      background: rgba(38, 166, 154, 0.2);
+      border: 1px solid #26a69a;
+      color: #26a69a;
+    }
+
+    .api-test-result.error {
+      display: block;
+      background: rgba(239, 83, 80, 0.2);
+      border: 1px solid #ef5350;
+      color: #ef5350;
+    }
+
+    .code-block {
+      background: #1e222d;
+      border: 1px solid #363a45;
+      border-radius: 4px;
+      padding: 12px;
+      font-family: 'Monaco', 'Consolas', monospace;
+      font-size: 10px;
+      color: #a0a0a0;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.4;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #1e222d;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #363a45;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4a4e59;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <div class="logo"></div>
+      TradingView Alerts
+    </h1>
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Connecting...</span>
+    </div>
+  </div>
+
+  <div class="current-price">
+    <div class="label">Current Price</div>
+    <div>
+      <span class="value" id="currentPrice">--</span>
+      <span class="symbol" id="currentSymbol"></span>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="alerts">Alerts</div>
+    <div class="tab" data-tab="trades">Trade History</div>
+    <div class="tab" data-tab="settings">Settings</div>
+  </div>
+
+  <!-- Alerts Tab -->
+  <div class="tab-content active" id="alerts-tab">
+    <div class="add-section">
+      <h3>Add Alert Level</h3>
+      <div class="input-row">
+        <div class="input-group" style="flex: 2">
+          <label for="priceInput">Price</label>
+          <input type="number" id="priceInput" placeholder="Enter price" step="0.01">
+        </div>
+        <div class="input-group" style="flex: 1">
+          <label for="colorInput">Color</label>
+          <input type="color" id="colorInput" value="#ff9800">
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="input-group">
+          <label for="directionInput">Direction</label>
+          <select id="directionInput">
+            <option value="both">Cross Both</option>
+            <option value="above">Cross Above</option>
+            <option value="below">Cross Below</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="addBtn">Add Alert Level</button>
+    </div>
+
+    <div class="levels-section">
+      <h3>Active Alerts (<span id="alertCount">0</span>)</h3>
+      <div id="levelsList"></div>
+    </div>
+  </div>
+
+  <!-- Trades Tab -->
+  <div class="tab-content" id="trades-tab">
+    <div class="stats-summary">
+      <div class="stat-box">
+        <div class="stat-value" id="totalTrades">0</div>
+        <div class="stat-label">Total</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value buy" id="buyCount">0</div>
+        <div class="stat-label">Buys</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-value sell" id="sellCount">0</div>
+        <div class="stat-label">Sells</div>
+      </div>
+    </div>
+
+    <div class="trades-section">
+      <h3>
+        <span>Recent Trades</span>
+        <a href="#" id="clearTrades" style="font-size: 10px; color: #787b86;">Clear</a>
+      </h3>
+      <div id="tradesList"></div>
+    </div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div class="tab-content" id="settings-tab">
+    <div class="settings-section">
+      <h3>Options API Configuration</h3>
+      <p class="settings-desc">Configure a custom API endpoint for options chain data. Leave empty to use mock data.</p>
+
+      <div class="input-group" style="margin-bottom: 12px;">
+        <label for="apiUrlInput">API URL</label>
+        <input type="text" id="apiUrlInput" placeholder="https://your-api.com/options/{symbol}">
+        <small class="input-hint">Use {symbol} as placeholder for ticker symbol</small>
+      </div>
+
+      <div class="input-group" style="margin-bottom: 12px;">
+        <label for="apiKeyInput">API Key (optional)</label>
+        <input type="password" id="apiKeyInput" placeholder="Enter API key if required">
+      </div>
+
+      <div class="input-group" style="margin-bottom: 12px;">
+        <label for="apiHeaderInput">Auth Header Name</label>
+        <input type="text" id="apiHeaderInput" placeholder="X-API-Key" value="X-API-Key">
+        <small class="input-hint">Header name for API key (e.g., X-API-Key, Authorization)</small>
+      </div>
+
+      <button class="btn btn-primary" id="saveApiSettings">Save Settings</button>
+      <button class="btn btn-secondary" id="testApiBtn" style="margin-top: 8px;">Test API Connection</button>
+
+      <div id="apiTestResult" class="api-test-result"></div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Expected API Response Format</h3>
+      <pre class="code-block">{
+  "symbol": "AAPL",
+  "expirationDate": 1704326400,
+  "strikes": [180, 185, 190],
+  "calls": [
+    {"strike": 180, "lastPrice": 12.50,
+     "bid": 12.40, "ask": 12.60}
+  ],
+  "puts": [
+    {"strike": 180, "lastPrice": 2.10,
+     "bid": 2.05, "ask": 2.15}
+  ]
+}</pre>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="#" id="clearAll">Clear Alerts</a>
+    <a href="#" id="exportTrades">Export Trades</a>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "TradingView Price Alerts",
+  "version": "1.1.0",
+  "description": "Set custom price levels and get alerts when price crosses them on TradingView",
+  "permissions": [
+    "storage",
+    "notifications",
+    "alarms",
+    "sidePanel",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.tradingview.com/*",
+    "https://tradingview.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.tradingview.com/chart/*",
+        "https://tradingview.com/chart/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "Open TradingView Alerts"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

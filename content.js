@@ -1,0 +1,1699 @@
+// TradingView Price Alert Extension - Content Script
+// Reads price data from TradingView and draws alert lines on the chart
+
+(function() {
+  'use strict';
+
+  let currentSymbol = '';
+  let currentPrice = null;
+  let previousPrice = null;
+  let alertLevels = [];
+  let priceLineElements = [];
+  let pollInterval = null;
+  let chartInfo = { minPrice: 0, maxPrice: 0, chartTop: 0, chartHeight: 0, chartLeft: 0, chartWidth: 0 };
+  let optionsData = null;
+  let optionsPanel = null;
+  let lastOptionsSymbol = '';
+  let optionsVisible = true;
+  let apiSettings = { apiUrl: '', apiKey: '', apiHeader: 'X-API-Key' };
+  let optionsDataSource = null; // 'api', 'yahoo', or 'mock'
+  let orderWindowCounter = 0; // For unique order window IDs
+
+  // Initialize the extension
+  function init() {
+    console.log('[TV-Alert] Content script initialized');
+
+    // Load API settings first
+    loadApiSettings();
+
+    // Wait for chart to load
+    waitForChart().then(() => {
+      console.log('[TV-Alert] Chart detected, starting price monitoring');
+      startPriceMonitoring();
+      loadAlertLevels();
+      setupMessageListener();
+      createToastContainer();
+      createTradingButtons();
+      createOptionsPanel();
+    });
+  }
+
+  // Load API settings from storage
+  function loadApiSettings() {
+    chrome.storage.local.get(['optionsApiSettings'], (result) => {
+      if (result.optionsApiSettings) {
+        apiSettings = result.optionsApiSettings;
+        console.log('[TV-Alert] Loaded API settings:', apiSettings.apiUrl ? 'Custom API' : 'Mock data');
+      }
+    });
+  }
+
+  // ============ OPTIONS CHAIN PANEL ============
+
+  function createOptionsPanel() {
+    if (document.getElementById('tv-options-panel')) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'tv-options-panel';
+    panel.style.cssText = `
+      position: fixed;
+      top: 100px;
+      right: 60px;
+      width: 160px;
+      max-height: calc(100vh - 200px);
+      background: rgba(20, 23, 31, 0.97);
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      z-index: 9998;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    `;
+
+    // Header
+    const header = document.createElement('div');
+    header.id = 'options-header';
+    header.style.cssText = `
+      padding: 8px 10px;
+      background: linear-gradient(135deg, rgba(41, 98, 255, 0.3), rgba(156, 39, 176, 0.2));
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: move;
+    `;
+    header.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; font-weight: 600; color: #fff;">TONYC</span>
+        <span id="options-source" style="font-size: 8px; padding: 1px 4px; border-radius: 3px; cursor: help; display: none;"></span>
+        <span id="options-expiry" style="font-size: 9px; color: #a0a0a0;"></span>
+      </div>
+      <button id="options-toggle" style="background: none; border: none; color: #fff; cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;">−</button>
+    `;
+    panel.appendChild(header);
+
+    // Column headers
+    const colHeaders = document.createElement('div');
+    colHeaders.id = 'options-col-headers';
+    colHeaders.style.cssText = `
+      display: flex;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 9px;
+      color: #a0a0a0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    `;
+    colHeaders.innerHTML = `
+      <div style="flex: 1; text-align: center; color: #26a69a;">Call</div>
+      <div style="width: 50px; text-align: center;">Strike</div>
+      <div style="flex: 1; text-align: center; color: #ef5350;">Put</div>
+    `;
+    panel.appendChild(colHeaders);
+
+    // Options list container
+    const listContainer = document.createElement('div');
+    listContainer.id = 'options-list';
+    listContainer.style.cssText = `
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    `;
+    listContainer.innerHTML = `<div id="options-loading" style="padding: 20px; text-align: center; color: #787b86; font-size: 11px;">Loading options...</div>`;
+    panel.appendChild(listContainer);
+
+    document.body.appendChild(panel);
+    optionsPanel = panel;
+
+    // Toggle button
+    document.getElementById('options-toggle').onclick = () => {
+      optionsVisible = !optionsVisible;
+      document.getElementById('options-col-headers').style.display = optionsVisible ? 'flex' : 'none';
+      document.getElementById('options-list').style.display = optionsVisible ? 'block' : 'none';
+      document.getElementById('options-toggle').textContent = optionsVisible ? '−' : '+';
+    };
+
+    // Make draggable
+    makeDraggable(panel, header);
+
+    // Load options after delay
+    setTimeout(() => {
+      if (currentSymbol) fetchOptionsData(currentSymbol);
+    }, 2000);
+
+    // Refresh on symbol change
+    setInterval(() => {
+      if (currentSymbol && currentSymbol !== lastOptionsSymbol) {
+        fetchOptionsData(currentSymbol);
+      }
+    }, 3000);
+  }
+
+  function makeDraggable(el, handle) {
+    let offsetX, offsetY, isDragging = false;
+    handle.onmousedown = (e) => {
+      isDragging = true;
+      offsetX = e.clientX - el.getBoundingClientRect().left;
+      offsetY = e.clientY - el.getBoundingClientRect().top;
+    };
+    document.onmousemove = (e) => {
+      if (!isDragging) return;
+      el.style.left = (e.clientX - offsetX) + 'px';
+      el.style.top = (e.clientY - offsetY) + 'px';
+      el.style.right = 'auto';
+    };
+    document.onmouseup = () => isDragging = false;
+  }
+
+  async function fetchOptionsData(symbol) {
+    const cleanSymbol = symbol.replace(/^[A-Z]+:/, '').toUpperCase();
+    if (cleanSymbol === lastOptionsSymbol) return;
+    lastOptionsSymbol = cleanSymbol;
+
+    const loading = document.getElementById('options-loading');
+    const list = document.getElementById('options-list');
+    if (loading) {
+      loading.style.display = 'block';
+      loading.textContent = `Loading ${cleanSymbol}...`;
+    }
+
+    // Try custom API if configured
+    if (apiSettings.apiUrl) {
+      try {
+        const apiUrl = apiSettings.apiUrl.replace('{symbol}', cleanSymbol);
+        const headers = {};
+        if (apiSettings.apiKey) {
+          headers[apiSettings.apiHeader || 'X-API-Key'] = apiSettings.apiKey;
+        }
+
+        console.log('[TV-Alert] Fetching from custom API:', apiUrl);
+        const resp = await fetch(apiUrl, { headers });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        // Handle direct format (expected from custom API)
+        if (data.strikes || data.calls || data.puts) {
+          optionsData = {
+            symbol: data.symbol || cleanSymbol,
+            expirationDate: data.expirationDate,
+            strikes: data.strikes || [],
+            calls: data.calls || [],
+            puts: data.puts || []
+          };
+          optionsDataSource = 'api';
+          renderOptionsChain();
+          console.log('[TV-Alert] Loaded options from custom API');
+          return;
+        }
+      } catch (e) {
+        console.log('[TV-Alert] Custom API failed:', e.message);
+      }
+    }
+
+    // Try Yahoo Finance as fallback
+    try {
+      const resp = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${cleanSymbol}`);
+      if (!resp.ok) throw new Error('Fetch failed');
+      const data = await resp.json();
+
+      if (data.optionChain?.result?.[0]) {
+        const result = data.optionChain.result[0];
+        optionsData = {
+          symbol: cleanSymbol,
+          expirationDate: result.expirationDates?.[0],
+          strikes: result.strikes || [],
+          calls: result.options?.[0]?.calls || [],
+          puts: result.options?.[0]?.puts || []
+        };
+        optionsDataSource = 'yahoo';
+        renderOptionsChain();
+        return;
+      }
+    } catch (e) {
+      console.log('[TV-Alert] Yahoo Finance failed, using mock data');
+    }
+
+    // Generate mock data as last resort
+    generateMockOptions(cleanSymbol);
+  }
+
+  function generateMockOptions(symbol) {
+    if (!currentPrice) return;
+
+    const strikes = [], calls = [], puts = [];
+    const base = Math.round(currentPrice);
+    const step = currentPrice > 100 ? 5 : (currentPrice > 10 ? 1 : 0.5);
+
+    for (let i = -12; i <= 12; i++) {
+      const strike = base + (i * step);
+      if (strike <= 0) continue;
+      strikes.push(strike);
+
+      const diff = currentPrice - strike;
+      const intrinsicCall = Math.max(0, diff);
+      const intrinsicPut = Math.max(0, -diff);
+      const tv = (Math.random() * 1.5 + 0.3) * (1 + Math.abs(i) * 0.08);
+
+      calls.push({
+        strike,
+        lastPrice: +(intrinsicCall + tv).toFixed(2),
+        bid: +(intrinsicCall + tv - 0.05).toFixed(2),
+        ask: +(intrinsicCall + tv + 0.05).toFixed(2),
+        inTheMoney: diff > 0
+      });
+      puts.push({
+        strike,
+        lastPrice: +(intrinsicPut + tv).toFixed(2),
+        bid: +(intrinsicPut + tv - 0.05).toFixed(2),
+        ask: +(intrinsicPut + tv + 0.05).toFixed(2),
+        inTheMoney: -diff > 0
+      });
+    }
+
+    const exp = new Date();
+    exp.setDate(exp.getDate() + 30);
+    optionsData = { symbol, expirationDate: Math.floor(exp.getTime() / 1000), strikes, calls, puts, isMock: true };
+    optionsDataSource = 'mock';
+    renderOptionsChain();
+  }
+
+  function updateSourceIndicator() {
+    const sourceEl = document.getElementById('options-source');
+    if (!sourceEl) return;
+
+    const sources = {
+      api: { letter: 'A', color: '#26a69a', tooltip: 'Data from Custom API' },
+      yahoo: { letter: 'Y', color: '#2196f3', tooltip: 'Data from Yahoo Finance' },
+      mock: { letter: 'M', color: '#ff9800', tooltip: 'Mock/Simulated Data' }
+    };
+
+    const src = sources[optionsDataSource];
+    if (src) {
+      sourceEl.textContent = src.letter;
+      sourceEl.style.backgroundColor = src.color;
+      sourceEl.style.color = '#fff';
+      sourceEl.title = src.tooltip;
+      sourceEl.style.display = 'inline';
+    } else {
+      sourceEl.style.display = 'none';
+    }
+  }
+
+  function renderOptionsChain() {
+    if (!optionsData) return;
+    updateSourceIndicator();
+
+    const list = document.getElementById('options-list');
+    const expEl = document.getElementById('options-expiry');
+    const loading = document.getElementById('options-loading');
+    if (loading) loading.style.display = 'none';
+
+    if (expEl && optionsData.expirationDate) {
+      const d = new Date(optionsData.expirationDate * 1000);
+      expEl.textContent = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + (optionsData.isMock ? ' *' : '');
+    }
+
+    const callMap = {}, putMap = {};
+    optionsData.calls.forEach(c => callMap[c.strike] = c);
+    optionsData.puts.forEach(p => putMap[p.strike] = p);
+
+    const visible = optionsData.strikes.filter(s => {
+      if (!currentPrice) return true;
+      return Math.abs(s - currentPrice) / currentPrice < 0.12;
+    }).sort((a, b) => b - a);
+
+    let html = '';
+    visible.forEach(strike => {
+      const call = callMap[strike];
+      const put = putMap[strike];
+      const isATM = currentPrice && Math.abs(strike - currentPrice) < currentPrice * 0.008;
+      const itmCall = currentPrice && strike < currentPrice;
+      const itmPut = currentPrice && strike > currentPrice;
+
+      html += `
+        <div class="opt-row" data-strike="${strike}" style="
+          display: flex; align-items: center;
+          padding: 4px 6px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 3px solid #2962ff;' : ''}
+          transition: background 0.15s;
+        " onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='${isATM ? 'linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1))' : ''}'">
+          <div class="opt-call" data-type="call" style="
+            flex: 1; text-align: center;
+            padding: 3px 4px; margin: 1px;
+            border-radius: 4px;
+            font-size: 11px; font-weight: 500;
+            cursor: pointer;
+            background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
+            color: #26a69a;
+            transition: all 0.15s;
+          " title="C ${strike}: ${call?.bid?.toFixed(2) || '-'} / ${call?.ask?.toFixed(2) || '-'}">${call ? fmtOpt(call.lastPrice) : '-'}</div>
+          <div style="
+            width: 48px; text-align: center;
+            font-size: 11px; font-weight: 600;
+            color: ${isATM ? '#fff' : '#d1d4dc'};
+          ">${strike}</div>
+          <div class="opt-put" data-type="put" style="
+            flex: 1; text-align: center;
+            padding: 3px 4px; margin: 1px;
+            border-radius: 4px;
+            font-size: 11px; font-weight: 500;
+            cursor: pointer;
+            background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
+            color: #ef5350;
+            transition: all 0.15s;
+          " title="P ${strike}: ${put?.bid?.toFixed(2) || '-'} / ${put?.ask?.toFixed(2) || '-'}">${put ? fmtOpt(put.lastPrice) : '-'}</div>
+        </div>
+      `;
+    });
+
+    list.innerHTML = html;
+
+    // Click handlers
+    list.querySelectorAll('.opt-call, .opt-put').forEach(el => {
+      el.onclick = (e) => {
+        const row = e.target.closest('.opt-row');
+        const strike = +row.dataset.strike;
+        const isCall = e.target.dataset.type === 'call';
+        const opt = isCall ? callMap[strike] : putMap[strike];
+        if (opt) {
+          createOrderWindow(opt, isCall, strike);
+        }
+      };
+      el.onmouseover = () => el.style.transform = 'scale(1.05)';
+      el.onmouseout = () => el.style.transform = 'scale(1)';
+    });
+
+    // Scroll to ATM
+    setTimeout(() => {
+      const rows = list.querySelectorAll('.opt-row');
+      let closest = null, minD = Infinity;
+      rows.forEach(r => {
+        const d = Math.abs(+r.dataset.strike - currentPrice);
+        if (d < minD) { minD = d; closest = r; }
+      });
+      if (closest) closest.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 100);
+  }
+
+  function fmtOpt(p) {
+    if (!p || p === 0) return '-';
+    return p >= 10 ? p.toFixed(1) : p.toFixed(2);
+  }
+
+  function createOrderWindow(optionData, isCall, strike) {
+    orderWindowCounter++;
+    const windowId = `order-window-${orderWindowCounter}`;
+    const symbol = optionsData?.symbol || currentSymbol;
+    const optType = isCall ? 'CALL' : 'PUT';
+    const optColor = isCall ? '#26a69a' : '#ef5350';
+
+    const bid = optionData?.bid || 0;
+    const ask = optionData?.ask || 0;
+    const mid = ((bid + ask) / 2) || optionData?.lastPrice || 0;
+
+    const win = document.createElement('div');
+    win.id = windowId;
+    win.className = 'tv-order-window';
+    win.style.cssText = `
+      position: fixed;
+      top: ${100 + (orderWindowCounter % 5) * 30}px;
+      left: ${200 + (orderWindowCounter % 5) * 30}px;
+      width: 260px;
+      background: linear-gradient(145deg, #1e222d, #252932);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      z-index: 10001;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: #d1d4dc;
+      overflow: hidden;
+    `;
+
+    win.innerHTML = `
+      <div class="order-header" style="
+        padding: 8px 10px;
+        background: rgba(0,0,0,0.2);
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        cursor: move;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      ">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 3px;
+            background: ${optColor};
+            color: #fff;
+            font-weight: 600;
+          ">${optType}</span>
+          <span style="font-size: 12px; font-weight: 600; color: #fff;">${symbol} ${strike}</span>
+        </div>
+        <button class="order-close" style="
+          background: none;
+          border: none;
+          color: #808080;
+          cursor: pointer;
+          font-size: 18px;
+          line-height: 1;
+          padding: 0 4px;
+          transition: color 0.15s;
+        ">&times;</button>
+      </div>
+
+      <div style="padding: 10px;">
+        <!-- Bid/Ask Display -->
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 11px;">
+          <div style="text-align: center;">
+            <div style="color: #808080; margin-bottom: 2px;">BID</div>
+            <div style="color: #26a69a; font-weight: 600; font-size: 13px;">${bid.toFixed(2)}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="color: #808080; margin-bottom: 2px;">MID</div>
+            <div style="color: #d1d4dc; font-weight: 600; font-size: 13px;">${mid.toFixed(2)}</div>
+          </div>
+          <div style="text-align: center;">
+            <div style="color: #808080; margin-bottom: 2px;">ASK</div>
+            <div style="color: #ef5350; font-weight: 600; font-size: 13px;">${ask.toFixed(2)}</div>
+          </div>
+        </div>
+
+        <!-- Buy/Sell Toggle -->
+        <div class="order-side-toggle" style="
+          display: flex;
+          margin-bottom: 10px;
+          border-radius: 4px;
+          overflow: hidden;
+          border: 1px solid rgba(255,255,255,0.1);
+        ">
+          <button class="side-btn buy-btn active" data-side="buy" style="
+            flex: 1;
+            padding: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.15s;
+            background: #26a69a;
+            color: #fff;
+          ">BUY</button>
+          <button class="side-btn sell-btn" data-side="sell" style="
+            flex: 1;
+            padding: 8px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+            transition: all 0.15s;
+            background: rgba(255,255,255,0.05);
+            color: #808080;
+          ">SELL</button>
+        </div>
+
+        <!-- Order Type -->
+        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+          <div style="flex: 1;">
+            <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">ORDER TYPE</label>
+            <select class="order-type-select" style="
+              width: 100%;
+              padding: 6px 8px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              font-size: 11px;
+              cursor: pointer;
+            ">
+              <option value="limit">Limit</option>
+              <option value="market">Market</option>
+              <option value="stop">Stop</option>
+              <option value="stop_limit">Stop Limit</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">TIME IN FORCE</label>
+            <select class="order-tif-select" style="
+              width: 100%;
+              padding: 6px 8px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              font-size: 11px;
+              cursor: pointer;
+            ">
+              <option value="day">Day</option>
+              <option value="gtc">GTC</option>
+              <option value="ioc">IOC</option>
+              <option value="fok">FOK</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Price Input -->
+        <div class="price-row" style="margin-bottom: 10px;">
+          <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">LIMIT PRICE</label>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="price-btn price-down" style="
+              width: 28px; height: 28px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              cursor: pointer;
+              font-size: 14px;
+              transition: background 0.15s;
+            ">−</button>
+            <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="
+              flex: 1;
+              padding: 6px 8px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #fff;
+              font-size: 13px;
+              font-weight: 600;
+              text-align: center;
+            ">
+            <button class="price-btn price-up" style="
+              width: 28px; height: 28px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              cursor: pointer;
+              font-size: 14px;
+              transition: background 0.15s;
+            ">+</button>
+          </div>
+        </div>
+
+        <!-- Quantity Input -->
+        <div style="margin-bottom: 10px;">
+          <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">QUANTITY (CONTRACTS)</label>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="qty-btn qty-down" style="
+              width: 28px; height: 28px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              cursor: pointer;
+              font-size: 14px;
+              transition: background 0.15s;
+            ">−</button>
+            <input type="number" class="qty-input" value="1" min="1" step="1" style="
+              flex: 1;
+              padding: 6px 8px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #fff;
+              font-size: 13px;
+              font-weight: 600;
+              text-align: center;
+            ">
+            <button class="qty-btn qty-up" style="
+              width: 28px; height: 28px;
+              border: 1px solid rgba(255,255,255,0.1);
+              border-radius: 4px;
+              background: rgba(0,0,0,0.2);
+              color: #d1d4dc;
+              cursor: pointer;
+              font-size: 14px;
+              transition: background 0.15s;
+            ">+</button>
+          </div>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <button class="qty-preset" data-qty="1" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">1</button>
+            <button class="qty-preset" data-qty="5" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">5</button>
+            <button class="qty-preset" data-qty="10" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">10</button>
+            <button class="qty-preset" data-qty="25" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">25</button>
+            <button class="qty-preset" data-qty="50" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">50</button>
+          </div>
+        </div>
+
+        <!-- Order Total -->
+        <div style="
+          padding: 8px;
+          background: rgba(0,0,0,0.2);
+          border-radius: 4px;
+          margin-bottom: 10px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        ">
+          <span style="font-size: 10px; color: #808080;">EST. TOTAL</span>
+          <span class="order-total" style="font-size: 14px; font-weight: 600; color: #fff;">$${(mid * 100).toFixed(2)}</span>
+        </div>
+
+        <!-- Submit Button -->
+        <button class="order-submit" style="
+          width: 100%;
+          padding: 10px;
+          border: none;
+          border-radius: 4px;
+          background: #26a69a;
+          color: #fff;
+          font-weight: 600;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.15s;
+          text-transform: uppercase;
+        ">Review Buy Order</button>
+      </div>
+    `;
+
+    document.body.appendChild(win);
+
+    // Make draggable
+    const header = win.querySelector('.order-header');
+    let offsetX, offsetY, isDragging = false;
+    header.onmousedown = (e) => {
+      if (e.target.classList.contains('order-close')) return;
+      isDragging = true;
+      offsetX = e.clientX - win.getBoundingClientRect().left;
+      offsetY = e.clientY - win.getBoundingClientRect().top;
+      win.style.zIndex = 10002;
+      document.querySelectorAll('.tv-order-window').forEach(w => {
+        if (w !== win) w.style.zIndex = 10001;
+      });
+    };
+    document.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      win.style.left = (e.clientX - offsetX) + 'px';
+      win.style.top = (e.clientY - offsetY) + 'px';
+    });
+    document.addEventListener('mouseup', () => isDragging = false);
+
+    // Close button
+    win.querySelector('.order-close').onclick = () => win.remove();
+    win.querySelector('.order-close').onmouseover = function() { this.style.color = '#fff'; };
+    win.querySelector('.order-close').onmouseout = function() { this.style.color = '#808080'; };
+
+    // Buy/Sell toggle
+    const buyBtn = win.querySelector('.buy-btn');
+    const sellBtn = win.querySelector('.sell-btn');
+    const submitBtn = win.querySelector('.order-submit');
+    let currentSide = 'buy';
+
+    const updateSide = (side) => {
+      currentSide = side;
+      if (side === 'buy') {
+        buyBtn.style.background = '#26a69a';
+        buyBtn.style.color = '#fff';
+        sellBtn.style.background = 'rgba(255,255,255,0.05)';
+        sellBtn.style.color = '#808080';
+        submitBtn.style.background = '#26a69a';
+        submitBtn.textContent = 'Review Buy Order';
+      } else {
+        sellBtn.style.background = '#ef5350';
+        sellBtn.style.color = '#fff';
+        buyBtn.style.background = 'rgba(255,255,255,0.05)';
+        buyBtn.style.color = '#808080';
+        submitBtn.style.background = '#ef5350';
+        submitBtn.textContent = 'Review Sell Order';
+      }
+    };
+    buyBtn.onclick = () => updateSide('buy');
+    sellBtn.onclick = () => updateSide('sell');
+
+    // Order type change - show/hide price input for market orders
+    const orderTypeSelect = win.querySelector('.order-type-select');
+    const priceRow = win.querySelector('.price-row');
+    orderTypeSelect.onchange = () => {
+      priceRow.style.display = orderTypeSelect.value === 'market' ? 'none' : 'block';
+      updateTotal();
+    };
+
+    // Price buttons
+    const priceInput = win.querySelector('.price-input');
+    win.querySelector('.price-down').onclick = () => {
+      priceInput.value = Math.max(0.01, parseFloat(priceInput.value) - 0.05).toFixed(2);
+      updateTotal();
+    };
+    win.querySelector('.price-up').onclick = () => {
+      priceInput.value = (parseFloat(priceInput.value) + 0.05).toFixed(2);
+      updateTotal();
+    };
+    priceInput.oninput = updateTotal;
+
+    // Quantity buttons
+    const qtyInput = win.querySelector('.qty-input');
+    win.querySelector('.qty-down').onclick = () => {
+      qtyInput.value = Math.max(1, parseInt(qtyInput.value) - 1);
+      updateTotal();
+    };
+    win.querySelector('.qty-up').onclick = () => {
+      qtyInput.value = parseInt(qtyInput.value) + 1;
+      updateTotal();
+    };
+    qtyInput.oninput = updateTotal;
+
+    // Quantity presets
+    win.querySelectorAll('.qty-preset').forEach(btn => {
+      btn.onclick = () => {
+        qtyInput.value = btn.dataset.qty;
+        updateTotal();
+      };
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.2)'; };
+    });
+
+    // Update total
+    const totalEl = win.querySelector('.order-total');
+    function updateTotal() {
+      const price = orderTypeSelect.value === 'market' ? (currentSide === 'buy' ? ask : bid) : parseFloat(priceInput.value);
+      const qty = parseInt(qtyInput.value) || 1;
+      const total = price * qty * 100; // Options are 100 shares per contract
+      totalEl.textContent = '$' + total.toFixed(2);
+    }
+
+    // Submit button hover
+    submitBtn.onmouseover = function() { this.style.filter = 'brightness(1.1)'; };
+    submitBtn.onmouseout = function() { this.style.filter = 'brightness(1)'; };
+    submitBtn.onclick = () => {
+      const orderType = orderTypeSelect.value;
+      const tif = win.querySelector('.order-tif-select').value;
+      const price = orderType === 'market' ? 'MKT' : priceInput.value;
+      const qty = qtyInput.value;
+      showToast(
+        `<strong>Order Preview</strong><br>${currentSide.toUpperCase()} ${qty}x ${symbol} ${strike} ${optType}<br>${orderType.toUpperCase()} @ ${price} | ${tif.toUpperCase()}`,
+        currentSide === 'buy' ? 'above' : 'below',
+        4000
+      );
+    };
+
+    // Button hover effects
+    win.querySelectorAll('.price-btn, .qty-btn').forEach(btn => {
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.2)'; };
+    });
+  }
+
+  // ============ END OPTIONS CHAIN ============
+
+  // Create Buy/Sell trading buttons
+  function createTradingButtons() {
+    if (document.getElementById('tv-alert-trading-buttons')) return;
+
+    const container = document.createElement('div');
+    container.id = 'tv-alert-trading-buttons';
+    container.style.cssText = `
+      position: fixed;
+      top: 60px;
+      right: 320px;
+      z-index: 9999;
+      display: flex;
+      gap: 8px;
+      padding: 8px;
+      background: rgba(30, 34, 45, 0.95);
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    `;
+
+    // Price display
+    const priceDisplay = document.createElement('div');
+    priceDisplay.id = 'tv-trading-price';
+    priceDisplay.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 12px;
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      min-width: 80px;
+    `;
+    priceDisplay.innerHTML = `
+      <div style="font-size: 10px; color: #787b86; text-transform: uppercase;">Price</div>
+      <div id="tv-trading-price-value" style="font-size: 16px; font-weight: 600; color: #fff;">--</div>
+    `;
+    container.appendChild(priceDisplay);
+
+    // Buy button
+    const buyBtn = document.createElement('button');
+    buyBtn.id = 'tv-buy-btn';
+    buyBtn.innerHTML = `
+      <div style="font-size: 10px; opacity: 0.8;">LONG</div>
+      <div style="font-size: 14px; font-weight: 700;">BUY</div>
+    `;
+    buyBtn.style.cssText = `
+      background: linear-gradient(135deg, #26a69a 0%, #2e7d32 100%);
+      border: none;
+      color: white;
+      padding: 8px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      min-width: 70px;
+      box-shadow: 0 2px 8px rgba(38, 166, 154, 0.3);
+    `;
+    buyBtn.onmouseenter = () => {
+      buyBtn.style.transform = 'scale(1.05)';
+      buyBtn.style.boxShadow = '0 4px 15px rgba(38, 166, 154, 0.5)';
+    };
+    buyBtn.onmouseleave = () => {
+      buyBtn.style.transform = 'scale(1)';
+      buyBtn.style.boxShadow = '0 2px 8px rgba(38, 166, 154, 0.3)';
+    };
+    buyBtn.onclick = () => handleTradeClick('BUY');
+    container.appendChild(buyBtn);
+
+    // Sell button
+    const sellBtn = document.createElement('button');
+    sellBtn.id = 'tv-sell-btn';
+    sellBtn.innerHTML = `
+      <div style="font-size: 10px; opacity: 0.8;">SHORT</div>
+      <div style="font-size: 14px; font-weight: 700;">SELL</div>
+    `;
+    sellBtn.style.cssText = `
+      background: linear-gradient(135deg, #ef5350 0%, #c62828 100%);
+      border: none;
+      color: white;
+      padding: 8px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.2s ease;
+      min-width: 70px;
+      box-shadow: 0 2px 8px rgba(239, 83, 80, 0.3);
+    `;
+    sellBtn.onmouseenter = () => {
+      sellBtn.style.transform = 'scale(1.05)';
+      sellBtn.style.boxShadow = '0 4px 15px rgba(239, 83, 80, 0.5)';
+    };
+    sellBtn.onmouseleave = () => {
+      sellBtn.style.transform = 'scale(1)';
+      sellBtn.style.boxShadow = '0 2px 8px rgba(239, 83, 80, 0.3)';
+    };
+    sellBtn.onclick = () => handleTradeClick('SELL');
+    container.appendChild(sellBtn);
+
+    document.body.appendChild(container);
+
+    // Start updating price display
+    setInterval(updateTradingPriceDisplay, 200);
+  }
+
+  // Update the price display in trading buttons
+  function updateTradingPriceDisplay() {
+    const priceEl = document.getElementById('tv-trading-price-value');
+    if (priceEl && currentPrice) {
+      priceEl.textContent = formatPrice(currentPrice);
+    }
+  }
+
+  // Handle trade button click
+  function handleTradeClick(side) {
+    const price = currentPrice;
+    const symbol = currentSymbol;
+
+    console.log(`[TV-Alert] ${side} clicked - ${symbol} @ ${price}`);
+
+    // Visual feedback
+    const btn = document.getElementById(side === 'BUY' ? 'tv-buy-btn' : 'tv-sell-btn');
+    if (btn) {
+      btn.style.transform = 'scale(0.95)';
+      setTimeout(() => {
+        btn.style.transform = 'scale(1)';
+      }, 100);
+    }
+
+    // Show confirmation toast
+    const color = side === 'BUY' ? 'above' : 'below';
+    showToast(
+      `<strong>${side} ORDER</strong><br>${symbol} @ ${formatPrice(price)}`,
+      color,
+      3000
+    );
+
+    // Send message to background script
+    chrome.runtime.sendMessage({
+      type: 'TRADE_SIGNAL',
+      data: {
+        side: side,
+        symbol: symbol,
+        price: price,
+        timestamp: Date.now()
+      }
+    }).catch(() => {});
+
+    // Store trade in history
+    storeTrade(side, symbol, price);
+  }
+
+  // Store trade in local storage
+  function storeTrade(side, symbol, price) {
+    chrome.storage.local.get(['tradeHistory'], (result) => {
+      const history = result.tradeHistory || [];
+      history.unshift({
+        id: Date.now().toString(36),
+        side: side,
+        symbol: symbol,
+        price: price,
+        timestamp: Date.now()
+      });
+      // Keep last 100 trades
+      if (history.length > 100) history.pop();
+      chrome.storage.local.set({ tradeHistory: history });
+    });
+  }
+
+  // Create toast notification container
+  function createToastContainer() {
+    if (document.getElementById('tv-alert-toast-container')) return;
+
+    const container = document.createElement('div');
+    container.id = 'tv-alert-toast-container';
+    container.style.cssText = `
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      z-index: 99999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(container);
+  }
+
+  // Show toast notification on screen
+  function showToast(message, type = 'alert', duration = 5000) {
+    const container = document.getElementById('tv-alert-toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `tv-alert-toast ${type}`;
+
+    const colors = {
+      above: { bg: '#1b5e20', border: '#4caf50', icon: '📈' },
+      below: { bg: '#b71c1c', border: '#f44336', icon: '📉' },
+      alert: { bg: '#e65100', border: '#ff9800', icon: '🔔' }
+    };
+
+    const style = colors[type] || colors.alert;
+
+    toast.style.cssText = `
+      background: ${style.bg};
+      border-left: 4px solid ${style.border};
+      color: white;
+      padding: 16px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      animation: tv-alert-slide-in 0.3s ease-out;
+      pointer-events: auto;
+      cursor: pointer;
+      min-width: 280px;
+    `;
+
+    toast.innerHTML = `
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 24px;">${style.icon}</span>
+        <div>
+          <div style="font-weight: 600; margin-bottom: 4px;">ALERT TRIGGERED!</div>
+          <div style="opacity: 0.9;">${message}</div>
+        </div>
+      </div>
+    `;
+
+    toast.onclick = () => toast.remove();
+    container.appendChild(toast);
+
+    // Auto remove
+    setTimeout(() => {
+      toast.style.animation = 'tv-alert-slide-out 0.3s ease-in forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, duration);
+  }
+
+  // Play alert sound
+  function playAlertSound() {
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+      // Create a beep sound
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 800;
+      oscillator.type = 'sine';
+
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+
+      // Second beep
+      setTimeout(() => {
+        const osc2 = audioContext.createOscillator();
+        const gain2 = audioContext.createGain();
+        osc2.connect(gain2);
+        gain2.connect(audioContext.destination);
+        osc2.frequency.value = 1000;
+        osc2.type = 'sine';
+        gain2.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gain2.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        osc2.start(audioContext.currentTime);
+        osc2.stop(audioContext.currentTime + 0.5);
+      }, 200);
+    } catch (e) {
+      console.log('[TV-Alert] Could not play sound:', e);
+    }
+  }
+
+  // Wait for the TradingView chart to be ready
+  function waitForChart() {
+    return new Promise((resolve) => {
+      const checkChart = () => {
+        const priceElement = document.querySelector('[class*="lastPrice"]') ||
+                           document.querySelector('[class*="currentPrice"]') ||
+                           document.querySelector('.tv-symbol-price-quote__value') ||
+                           document.querySelector('[data-name="legend-source-item"]');
+
+        if (priceElement || document.querySelector('.chart-container')) {
+          resolve();
+        } else {
+          setTimeout(checkChart, 500);
+        }
+      };
+      checkChart();
+    });
+  }
+
+  // Extract current price from TradingView DOM
+  function getCurrentPrice() {
+    // Method 1: Try to get from the price axis (right side of chart)
+    const priceAxisValue = document.querySelector('[class*="price-axis"] [class*="last"]');
+    if (priceAxisValue) {
+      const price = parsePrice(priceAxisValue.textContent);
+      if (price) return price;
+    }
+
+    // Method 2: Look for the floating price label on the chart
+    const priceLabels = document.querySelectorAll('[class*="priceLabel"], [class*="price-label"]');
+    for (const label of priceLabels) {
+      const price = parsePrice(label.textContent);
+      if (price) return price;
+    }
+
+    // Method 3: Header price display (OHLC values)
+    const headerPrice = document.querySelector('[class*="valuesWrapper"] [class*="value"]');
+    if (headerPrice) {
+      const price = parsePrice(headerPrice.textContent);
+      if (price) return price;
+    }
+
+    // Method 4: Try to get from the legend source items (shows current close price)
+    const legendItems = document.querySelectorAll('[data-name="legend-source-item"] [class*="value"]');
+    if (legendItems.length >= 4) {
+      const closePrice = parsePrice(legendItems[3].textContent);
+      if (closePrice) return closePrice;
+    }
+
+    // Method 5: Look for any element containing the price near the chart
+    const allPriceElements = document.querySelectorAll('[class*="price"]');
+    for (const el of allPriceElements) {
+      if (el.textContent && el.textContent.length < 20) {
+        const price = parsePrice(el.textContent);
+        if (price && price > 0) return price;
+      }
+    }
+
+    // Method 6: Parse from URL or page title
+    const titleMatch = document.title.match(/(\d+\.?\d*)/);
+    if (titleMatch) {
+      return parseFloat(titleMatch[1]);
+    }
+
+    return null;
+  }
+
+  // Parse price string to number
+  function parsePrice(str) {
+    if (!str) return null;
+    const cleaned = str.replace(/[^0-9.-]/g, '');
+    const price = parseFloat(cleaned);
+    return isNaN(price) ? null : price;
+  }
+
+  // Get current symbol from TradingView
+  function getCurrentSymbol() {
+    const symbolElement = document.querySelector('[class*="title"] [class*="symbol"]') ||
+                         document.querySelector('[data-name="legend-series-item"] [class*="title"]') ||
+                         document.querySelector('.tv-symbol-header__short-name');
+
+    if (symbolElement) {
+      return symbolElement.textContent.trim();
+    }
+
+    const titleParts = document.title.split(' ');
+    if (titleParts.length > 0) {
+      return titleParts[0];
+    }
+
+    return 'UNKNOWN';
+  }
+
+  // Get chart price range from the price axis
+  function getChartPriceRange() {
+    // Find the price scale on the right side of the chart - try multiple selectors
+    const priceScale = document.querySelector('[class*="price-axis"]') ||
+                       document.querySelector('[class*="priceScale"]') ||
+                       document.querySelector('[data-name="price-axis"]') ||
+                       document.querySelector('.price-axis') ||
+                       document.querySelector('[class*="rightArea"]');
+
+    const prices = [];
+
+    if (priceScale) {
+      // Get all price labels from the scale
+      const labels = priceScale.querySelectorAll('[class*="label"]') ||
+                     priceScale.querySelectorAll('text') ||
+                     priceScale.querySelectorAll('span');
+
+      labels.forEach(label => {
+        const p = parsePrice(label.textContent);
+        if (p && p > 0) prices.push(p);
+      });
+
+      // Also try to get prices from any visible axis text
+      const allText = priceScale.textContent;
+      const priceMatches = allText.match(/[\d,]+\.?\d*/g);
+      if (priceMatches) {
+        priceMatches.forEach(m => {
+          const cleaned = m.replace(/,/g, '');
+          const p = parseFloat(cleaned);
+          if (p > 0 && !isNaN(p)) prices.push(p);
+        });
+      }
+    }
+
+    // Fallback: estimate range based on current price
+    if (prices.length < 2 && currentPrice) {
+      const range = currentPrice * 0.05; // Assume 5% visible range
+      prices.push(currentPrice - range, currentPrice + range);
+    }
+
+    if (prices.length >= 2) {
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      // Only return if we have a valid range
+      if (max > min && max - min < currentPrice * 0.5) {
+        return { min, max };
+      }
+    }
+
+    // Last resort: use current price with 5% range
+    if (currentPrice) {
+      return {
+        min: currentPrice * 0.975,
+        max: currentPrice * 1.025
+      };
+    }
+
+    return null;
+  }
+
+  // Get the main chart canvas/container dimensions
+  function getChartDimensions() {
+    // Try to find the main chart pane - use multiple selectors
+    const chartPane = document.querySelector('.chart-markup-table') ||
+                      document.querySelector('[class*="chart-markup-table"]') ||
+                      document.querySelector('[data-name="pane-widget"]') ||
+                      document.querySelector('.chart-container') ||
+                      document.querySelector('.layout__area--center') ||
+                      document.querySelector('[class*="chartContainer"]');
+
+    // Also try to find via canvas element
+    if (!chartPane) {
+      const canvas = document.querySelector('canvas[class*="chart"]') ||
+                     document.querySelector('.tv-chart canvas') ||
+                     document.querySelector('canvas');
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          top: rect.top,
+          height: rect.height,
+          left: rect.left,
+          width: rect.width
+        };
+      }
+    }
+
+    if (chartPane) {
+      const rect = chartPane.getBoundingClientRect();
+      return {
+        top: rect.top,
+        height: rect.height,
+        left: rect.left,
+        width: rect.width
+      };
+    }
+    return null;
+  }
+
+  // Start monitoring price changes
+  function startPriceMonitoring() {
+    if (pollInterval) clearInterval(pollInterval);
+
+    pollInterval = setInterval(() => {
+      const newPrice = getCurrentPrice();
+      const symbol = getCurrentSymbol();
+
+      if (newPrice && newPrice !== currentPrice) {
+        previousPrice = currentPrice;
+        currentPrice = newPrice;
+        currentSymbol = symbol;
+
+        // Send price update to background script
+        chrome.runtime.sendMessage({
+          type: 'PRICE_UPDATE',
+          data: {
+            price: currentPrice,
+            symbol: currentSymbol,
+            timestamp: Date.now()
+          }
+        }).catch(() => {});
+
+        // Update chart info for line positioning
+        updateChartInfo();
+
+        // Update line positions
+        updateAllLinePositions();
+      }
+    }, 200);
+  }
+
+  // Update stored chart information
+  function updateChartInfo() {
+    const range = getChartPriceRange();
+    const dims = getChartDimensions();
+
+    if (range) {
+      chartInfo.minPrice = range.min;
+      chartInfo.maxPrice = range.max;
+    }
+    if (dims) {
+      chartInfo.chartTop = dims.top;
+      chartInfo.chartHeight = dims.height;
+      chartInfo.chartLeft = dims.left;
+      chartInfo.chartWidth = dims.width;
+    }
+  }
+
+  // Load alert levels from storage
+  function loadAlertLevels() {
+    chrome.storage.local.get(['alertLevels'], (result) => {
+      alertLevels = result.alertLevels || [];
+      drawAlertLines();
+    });
+  }
+
+  // Draw alert lines on the chart
+  function drawAlertLines() {
+    // Remove existing lines
+    priceLineElements.forEach(el => el.remove());
+    priceLineElements = [];
+
+    // Find the chart container - try multiple selectors for different TradingView versions
+    const chartContainer = document.querySelector('.chart-markup-table') ||
+                          document.querySelector('[class*="chart-markup-table"]') ||
+                          document.querySelector('[data-name="pane-widget"]') ||
+                          document.querySelector('.chart-container') ||
+                          document.querySelector('.layout__area--center') ||
+                          document.querySelector('[class*="chartContainer"]') ||
+                          document.querySelector('canvas')?.parentElement?.parentElement;
+
+    if (!chartContainer) {
+      console.log('[TV-Alert] Chart container not found, retrying...');
+      setTimeout(drawAlertLines, 1000);
+      return;
+    }
+
+    console.log('[TV-Alert] Found chart container:', chartContainer.className || chartContainer.tagName);
+
+    // Remove old overlay if it exists in wrong place
+    const oldOverlay = document.getElementById('tv-alert-overlay');
+    if (oldOverlay) oldOverlay.remove();
+
+    // Create fresh overlay
+    const overlay = document.createElement('div');
+    overlay.id = 'tv-alert-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      z-index: 9990;
+      overflow: visible;
+    `;
+    document.body.appendChild(overlay);
+
+    // Update chart info before drawing
+    updateChartInfo();
+
+    console.log('[TV-Alert] Drawing', alertLevels.length, 'alert levels, chartInfo:', chartInfo);
+
+    alertLevels.forEach(level => {
+      if (level.enabled) {
+        const line = createPriceLine(level);
+        overlay.appendChild(line);
+        priceLineElements.push(line);
+      }
+    });
+
+    // Initial position update
+    setTimeout(updateAllLinePositions, 100);
+  }
+
+  // Create a visual price line element
+  function createPriceLine(level) {
+    const line = document.createElement('div');
+    line.id = `alert-line-${level.id}`;
+    line.className = 'tv-alert-line';
+    line.dataset.price = level.price;
+    line.dataset.levelId = level.id;
+
+    const color = level.color || '#ff9800';
+
+    line.style.cssText = `
+      position: fixed;
+      height: 2px;
+      background: repeating-linear-gradient(
+        to right,
+        ${color},
+        ${color} 10px,
+        transparent 10px,
+        transparent 15px
+      );
+      pointer-events: none;
+      z-index: 9991;
+      transition: top 0.1s ease-out;
+    `;
+
+    // Add glow effect
+    const glow = document.createElement('div');
+    glow.className = 'tv-alert-line-glow';
+    glow.style.cssText = `
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: -3px;
+      bottom: -3px;
+      background: ${color};
+      opacity: 0.3;
+      filter: blur(4px);
+    `;
+    line.appendChild(glow);
+
+    // Add price label
+    const label = document.createElement('div');
+    label.className = 'tv-alert-label';
+    label.style.cssText = `
+      position: absolute;
+      right: 0;
+      top: -9px;
+      transform: translateX(100%);
+      margin-left: 4px;
+      background: ${color};
+      color: white;
+      padding: 3px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      white-space: nowrap;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      z-index: 9992;
+    `;
+    label.textContent = formatPrice(level.price);
+    line.appendChild(label);
+
+    // Add direction indicator
+    const dirIndicator = document.createElement('div');
+    dirIndicator.style.cssText = `
+      position: absolute;
+      left: 10px;
+      top: -8px;
+      font-size: 10px;
+      color: ${color};
+      text-shadow: 0 0 3px black;
+    `;
+    if (level.direction === 'above') {
+      dirIndicator.textContent = '▲ CROSS ABOVE';
+    } else if (level.direction === 'below') {
+      dirIndicator.textContent = '▼ CROSS BELOW';
+    } else {
+      dirIndicator.textContent = '◆ CROSS BOTH';
+    }
+    line.appendChild(dirIndicator);
+
+    return line;
+  }
+
+  // Format price for display
+  function formatPrice(price) {
+    if (price >= 1000) {
+      return price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    } else if (price >= 1) {
+      return price.toFixed(2);
+    } else {
+      return price.toFixed(4);
+    }
+  }
+
+  // Calculate Y position for a price level
+  function calculateYPosition(price) {
+    if (!chartInfo.maxPrice || !chartInfo.minPrice || chartInfo.maxPrice === chartInfo.minPrice) {
+      // Fallback: use current price as reference
+      if (currentPrice) {
+        const priceDiff = (price - currentPrice) / currentPrice;
+        const center = chartInfo.chartHeight / 2;
+        return center - (priceDiff * chartInfo.chartHeight * 2);
+      }
+      return null;
+    }
+
+    const priceRange = chartInfo.maxPrice - chartInfo.minPrice;
+    const priceFromTop = chartInfo.maxPrice - price;
+    const percentFromTop = priceFromTop / priceRange;
+
+    return percentFromTop * chartInfo.chartHeight;
+  }
+
+  // Update position of a single line
+  function updateLinePosition(lineElement) {
+    const price = parseFloat(lineElement.dataset.price);
+    if (!price) return;
+
+    const relativeY = calculateYPosition(price);
+
+    // Convert relative Y to absolute position on page
+    const absoluteY = chartInfo.chartTop + (relativeY || 0);
+
+    // Set horizontal position to match chart area
+    lineElement.style.left = `${chartInfo.chartLeft}px`;
+    lineElement.style.width = `${chartInfo.chartWidth - 60}px`; // Leave space for price label
+
+    if (relativeY !== null && relativeY >= -50 && relativeY <= chartInfo.chartHeight + 50) {
+      lineElement.style.top = `${absoluteY}px`;
+      lineElement.style.display = 'block';
+      lineElement.style.opacity = '1';
+    } else {
+      // Line is outside visible range - show indicator at edge
+      if (relativeY !== null) {
+        if (relativeY < 0) {
+          lineElement.style.top = `${chartInfo.chartTop}px`;
+          lineElement.style.opacity = '0.4';
+          lineElement.style.display = 'block';
+        } else {
+          lineElement.style.top = `${chartInfo.chartTop + chartInfo.chartHeight - 2}px`;
+          lineElement.style.opacity = '0.4';
+          lineElement.style.display = 'block';
+        }
+      } else {
+        lineElement.style.display = 'none';
+      }
+    }
+  }
+
+  // Update all line positions
+  function updateAllLinePositions() {
+    updateChartInfo();
+    priceLineElements.forEach(line => updateLinePosition(line));
+  }
+
+  // Flash a line when alert triggers
+  function flashLine(levelId, direction) {
+    const line = document.getElementById(`alert-line-${levelId}`);
+    if (!line) return;
+
+    // Add triggered class for animation
+    line.classList.add('triggered');
+
+    const color = direction === 'above' ? '#4caf50' : '#f44336';
+
+    // Intense flash effect
+    line.style.boxShadow = `0 0 20px 5px ${color}`;
+    line.style.background = color;
+    line.style.height = '4px';
+    line.style.zIndex = '200';
+
+    // Pulse animation
+    let pulseCount = 0;
+    const pulseInterval = setInterval(() => {
+      pulseCount++;
+      line.style.opacity = pulseCount % 2 === 0 ? '1' : '0.5';
+      if (pulseCount >= 10) {
+        clearInterval(pulseInterval);
+        // Reset after animation
+        setTimeout(() => {
+          line.classList.remove('triggered');
+          line.style.boxShadow = '';
+          line.style.height = '2px';
+          line.style.zIndex = '100';
+          line.style.opacity = '1';
+          // Restore original dashed pattern
+          const levelData = alertLevels.find(l => l.id === levelId);
+          if (levelData) {
+            line.style.background = `repeating-linear-gradient(
+              to right,
+              ${levelData.color || '#ff9800'},
+              ${levelData.color || '#ff9800'} 10px,
+              transparent 10px,
+              transparent 15px
+            )`;
+          }
+        }, 500);
+      }
+    }, 150);
+  }
+
+  // Handle alert trigger from background
+  function handleAlertTrigger(level, symbol, price, direction) {
+    console.log(`[TV-Alert] TRIGGERED: ${symbol} crossed ${direction} ${level.price}`);
+
+    // Play sound
+    playAlertSound();
+
+    // Flash the line
+    flashLine(level.id, direction);
+
+    // Show toast
+    const dirText = direction === 'above' ? 'crossed ABOVE' : 'crossed BELOW';
+    showToast(
+      `${symbol} ${dirText} ${formatPrice(level.price)}<br>Current: ${formatPrice(price)}`,
+      direction,
+      8000
+    );
+  }
+
+  // Listen for messages from popup/background
+  function setupMessageListener() {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      switch (message.type) {
+        case 'GET_PRICE':
+          sendResponse({
+            price: currentPrice,
+            symbol: currentSymbol
+          });
+          break;
+
+        case 'LEVELS_UPDATED':
+          alertLevels = message.levels || [];
+          drawAlertLines();
+          sendResponse({ success: true });
+          break;
+
+        case 'ALERT_TRIGGERED':
+          handleAlertTrigger(message.level, message.symbol, message.price, message.direction);
+          sendResponse({ received: true });
+          break;
+
+        case 'PING':
+          sendResponse({ pong: true, price: currentPrice, symbol: currentSymbol });
+          break;
+
+        case 'API_SETTINGS_UPDATED':
+          apiSettings = message.settings || { apiUrl: '', apiKey: '', apiHeader: 'X-API-Key' };
+          console.log('[TV-Alert] API settings updated:', apiSettings.apiUrl ? 'Custom API' : 'Default');
+          // Reset and reload options with new settings
+          lastOptionsSymbol = '';
+          if (currentSymbol) {
+            fetchOptionsData(currentSymbol);
+          }
+          sendResponse({ success: true });
+          break;
+      }
+      return true;
+    });
+  }
+
+  // Watch for chart navigation/updates
+  function watchForChartChanges() {
+    const observer = new MutationObserver((mutations) => {
+      let shouldUpdate = false;
+      mutations.forEach(mutation => {
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          shouldUpdate = true;
+        }
+      });
+
+      if (shouldUpdate) {
+        setTimeout(() => {
+          updateChartInfo();
+          updateAllLinePositions();
+        }, 200);
+      }
+    });
+
+    const chartContainer = document.querySelector('.chart-container') ||
+                          document.querySelector('[class*="chart-markup-table"]');
+
+    if (chartContainer) {
+      observer.observe(chartContainer, {
+        childList: true,
+        subtree: true
+      });
+    }
+
+    // Also watch for scroll/zoom changes
+    window.addEventListener('wheel', () => {
+      setTimeout(updateAllLinePositions, 100);
+    });
+  }
+
+  // Initialize
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  // Start position updates after init
+  setTimeout(() => {
+    watchForChartChanges();
+    // Update positions periodically
+    setInterval(updateAllLinePositions, 500);
+  }, 2000);
+
+})();

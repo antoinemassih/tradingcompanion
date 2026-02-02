@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradingView Alerts</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(180deg, #131722 0%, #1e222d 100%);
+      color: #d1d4dc;
+      font-size: 13px;
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1e222d 0%, #2a2e39 100%);
+      padding: 20px;
+      border-bottom: 1px solid #363a45;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #ff9800 0%, #f57c00 100%);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .logo svg {
+      width: 18px;
+      height: 18px;
+      fill: white;
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #787b86;
+      padding: 6px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 20px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #787b86;
+      transition: all 0.3s ease;
+    }
+
+    .status-dot.active {
+      background: #26a69a;
+      box-shadow: 0 0 10px #26a69a;
+    }
+
+    /* Price Display */
+    .price-display {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .price-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .price-label {
+      font-size: 11px;
+      color: #787b86;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .price-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .price-symbol {
+      font-size: 14px;
+      color: #2962ff;
+      font-weight: 600;
+      background: rgba(41, 98, 255, 0.1);
+      padding: 6px 12px;
+      border-radius: 6px;
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      background: #1e222d;
+      border-bottom: 1px solid #363a45;
+      position: sticky;
+      top: 140px;
+      z-index: 99;
+    }
+
+    .nav-tab {
+      flex: 1;
+      padding: 14px 16px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      color: #787b86;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .nav-tab:hover {
+      color: #d1d4dc;
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .nav-tab.active {
+      color: #2962ff;
+      border-bottom-color: #2962ff;
+      background: rgba(41, 98, 255, 0.05);
+    }
+
+    .nav-tab svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    .tab-badge {
+      background: #2962ff;
+      color: white;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Section Styles */
+    .section {
+      padding: 20px;
+      border-bottom: 1px solid #2a2e39;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #787b86;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Form Styles */
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11px;
+      color: #787b86;
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-col {
+      flex: 1;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 12px 14px;
+      background: #131722;
+      border: 1px solid #363a45;
+      border-radius: 8px;
+      color: #d1d4dc;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: #2962ff;
+      box-shadow: 0 0 0 3px rgba(41, 98, 255, 0.1);
+    }
+
+    input::placeholder {
+      color: #5d606b;
+    }
+
+    input[type="color"] {
+      padding: 4px;
+      height: 44px;
+      cursor: pointer;
+    }
+
+    select {
+      cursor: pointer;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23787b86'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+    }
+
+    /* Buttons */
+    .btn {
+      padding: 12px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .btn:active {
+      transform: scale(0.98);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #2962ff 0%, #1e53e4 100%);
+      color: white;
+      width: 100%;
+      box-shadow: 0 4px 12px rgba(41, 98, 255, 0.3);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 20px rgba(41, 98, 255, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-secondary {
+      background: #363a45;
+      color: #d1d4dc;
+      width: 100%;
+    }
+
+    .btn-secondary:hover {
+      background: #4a4e59;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    /* Alert List */
+    .alert-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .alert-item {
+      display: flex;
+      align-items: center;
+      padding: 14px 16px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+      margin-bottom: 10px;
+      transition: all 0.2s ease;
+    }
+
+    .alert-item:hover {
+      background: rgba(255, 255, 255, 0.05);
+      transform: translateX(2px);
+    }
+
+    .alert-color {
+      width: 4px;
+      height: 40px;
+      border-radius: 2px;
+      margin-right: 14px;
+    }
+
+    .alert-info {
+      flex: 1;
+    }
+
+    .alert-price {
+      font-size: 16px;
+      font-weight: 600;
+      color: #fff;
+      font-family: 'SF Mono', Monaco, monospace;
+    }
+
+    .alert-meta {
+      font-size: 11px;
+      color: #787b86;
+      margin-top: 4px;
+    }
+
+    .alert-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .action-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: none;
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      color: #787b86;
+      transition: all 0.2s ease;
+    }
+
+    .action-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: #d1d4dc;
+    }
+
+    .action-btn.enabled svg {
+      fill: #26a69a;
+    }
+
+    .action-btn.delete:hover {
+      color: #ef5350;
+      background: rgba(239, 83, 80, 0.1);
+    }
+
+    .action-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: currentColor;
+    }
+
+    /* Empty State */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #787b86;
+    }
+
+    .empty-state svg {
+      width: 60px;
+      height: 60px;
+      fill: #363a45;
+      margin-bottom: 16px;
+    }
+
+    .empty-state p {
+      margin-bottom: 8px;
+    }
+
+    .empty-state .hint {
+      font-size: 11px;
+      color: #5d606b;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .stat-value.buy { color: #26a69a; }
+    .stat-value.sell { color: #ef5350; }
+
+    .stat-label {
+      font-size: 10px;
+      color: #787b86;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Trade List */
+    .trade-list {
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .trade-item {
+      display: flex;
+      align-items: center;
+      padding: 12px 14px;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+      margin-bottom: 8px;
+    }
+
+    .trade-side {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      margin-right: 14px;
+      min-width: 50px;
+      text-align: center;
+    }
+
+    .trade-side.buy {
+      background: rgba(38, 166, 154, 0.2);
+      color: #26a69a;
+    }
+
+    .trade-side.sell {
+      background: rgba(239, 83, 80, 0.2);
+      color: #ef5350;
+    }
+
+    .trade-info {
+      flex: 1;
+    }
+
+    .trade-symbol {
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .trade-price {
+      font-size: 12px;
+      color: #d1d4dc;
+      margin-top: 2px;
+    }
+
+    .trade-time {
+      text-align: right;
+      font-size: 11px;
+      color: #787b86;
+    }
+
+    .trade-date {
+      font-size: 10px;
+      color: #5d606b;
+      margin-top: 2px;
+    }
+
+    /* Settings */
+    .settings-section {
+      padding: 20px;
+    }
+
+    .settings-group {
+      margin-bottom: 24px;
+    }
+
+    .settings-group h3 {
+      font-size: 13px;
+      font-weight: 600;
+      color: #d1d4dc;
+      margin-bottom: 12px;
+    }
+
+    .settings-hint {
+      font-size: 11px;
+      color: #5d606b;
+      margin-top: 6px;
+    }
+
+    .api-test-result {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      display: none;
+    }
+
+    .api-test-result.success {
+      display: block;
+      background: rgba(38, 166, 154, 0.15);
+      border: 1px solid rgba(38, 166, 154, 0.3);
+      color: #26a69a;
+    }
+
+    .api-test-result.error {
+      display: block;
+      background: rgba(239, 83, 80, 0.15);
+      border: 1px solid rgba(239, 83, 80, 0.3);
+      color: #ef5350;
+    }
+
+    .code-block {
+      background: #131722;
+      border: 1px solid #363a45;
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 11px;
+      color: #a0a0a0;
+      overflow-x: auto;
+      white-space: pre;
+      line-height: 1.5;
+    }
+
+    /* Footer Actions */
+    .footer-actions {
+      padding: 16px 20px;
+      background: #1e222d;
+      border-top: 1px solid #363a45;
+      display: flex;
+      gap: 12px;
+    }
+
+    .footer-btn {
+      flex: 1;
+      padding: 10px;
+      background: transparent;
+      border: 1px solid #363a45;
+      border-radius: 6px;
+      color: #787b86;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .footer-btn:hover {
+      border-color: #5d606b;
+      color: #d1d4dc;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #363a45;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #4a4e59;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <div class="header-top">
+      <h1>
+        <div class="logo">
+          <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        TradingView Alerts
+      </h1>
+      <div class="status">
+        <div class="status-dot" id="statusDot"></div>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </div>
+    <div class="price-display">
+      <div class="price-info">
+        <div class="price-label">Current Price</div>
+        <div class="price-value" id="currentPrice">--</div>
+      </div>
+      <div class="price-symbol" id="currentSymbol">--</div>
+    </div>
+  </div>
+
+  <!-- Navigation Tabs -->
+  <div class="nav-tabs">
+    <div class="nav-tab active" data-tab="alerts">
+      <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2zm-2 1H8v-6c0-2.48 1.51-4.5 4-4.5s4 2.02 4 4.5v6z"/></svg>
+      Alerts
+      <span class="tab-badge" id="alertBadge">0</span>
+    </div>
+    <div class="nav-tab" data-tab="trades">
+      <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+      Trades
+    </div>
+    <div class="nav-tab" data-tab="settings">
+      <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+      Settings
+    </div>
+  </div>
+
+  <!-- Alerts Tab -->
+  <div class="tab-content active" id="alerts-tab">
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Add New Alert</span>
+      </div>
+      <div class="form-group">
+        <div class="form-row">
+          <div class="form-col" style="flex: 2;">
+            <label class="form-label">Price Level</label>
+            <input type="number" id="priceInput" placeholder="Enter price" step="0.01">
+          </div>
+          <div class="form-col" style="flex: 1;">
+            <label class="form-label">Color</label>
+            <input type="color" id="colorInput" value="#ff9800">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Trigger Direction</label>
+        <select id="directionInput">
+          <option value="both">Cross Both Directions</option>
+          <option value="above">Cross Above Only</option>
+          <option value="below">Cross Below Only</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" id="addBtn">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Add Alert Level
+      </button>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Active Alerts</span>
+      </div>
+      <div class="alert-list" id="alertList"></div>
+    </div>
+  </div>
+
+  <!-- Trades Tab -->
+  <div class="tab-content" id="trades-tab">
+    <div class="section">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="totalTrades">0</div>
+          <div class="stat-label">Total</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value buy" id="buyCount">0</div>
+          <div class="stat-label">Buys</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value sell" id="sellCount">0</div>
+          <div class="stat-label">Sells</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-header">
+        <span class="section-title">Trade History</span>
+      </div>
+      <div class="trade-list" id="tradeList"></div>
+    </div>
+  </div>
+
+  <!-- Settings Tab -->
+  <div class="tab-content" id="settings-tab">
+    <div class="settings-section">
+      <div class="settings-group">
+        <h3>Options API Configuration</h3>
+        <p class="settings-hint" style="margin-bottom: 16px;">Configure a custom API endpoint for options chain data.</p>
+
+        <div class="form-group">
+          <label class="form-label">API URL</label>
+          <input type="text" id="apiUrlInput" placeholder="https://your-api.com/options/{symbol}">
+          <p class="settings-hint">Use {symbol} as placeholder for ticker symbol</p>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">API Key (optional)</label>
+          <input type="password" id="apiKeyInput" placeholder="Enter API key if required">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Auth Header Name</label>
+          <input type="text" id="apiHeaderInput" placeholder="X-API-Key" value="X-API-Key">
+        </div>
+
+        <button class="btn btn-primary" id="saveApiSettings">Save Settings</button>
+        <button class="btn btn-secondary" id="testApiBtn" style="margin-top: 10px;">Test API Connection</button>
+
+        <div id="apiTestResult" class="api-test-result"></div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Expected API Response</h3>
+        <pre class="code-block">{
+  "symbol": "AAPL",
+  "expirationDate": 1704326400,
+  "strikes": [180, 185, 190],
+  "calls": [
+    {"strike": 180, "lastPrice": 12.50,
+     "bid": 12.40, "ask": 12.60}
+  ],
+  "puts": [
+    {"strike": 180, "lastPrice": 2.10,
+     "bid": 2.05, "ask": 2.15}
+  ]
+}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer Actions -->
+  <div class="footer-actions">
+    <button class="footer-btn" id="clearAlerts">Clear Alerts</button>
+    <button class="footer-btn" id="clearTrades">Clear Trades</button>
+    <button class="footer-btn" id="exportTrades">Export CSV</button>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
