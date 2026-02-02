@@ -410,7 +410,7 @@
     orderWindowCounter++;
     const windowId = `order-window-${orderWindowCounter}`;
     const symbol = optionsData?.symbol || currentSymbol;
-    const optType = isCall ? 'CALL' : 'PUT';
+    const optType = isCall ? 'C' : 'P';
     const optColor = isCall ? '#26a69a' : '#ef5350';
 
     const bid = optionData?.bid || 0;
@@ -422,252 +422,86 @@
     win.className = 'tv-order-window';
     win.style.cssText = `
       position: fixed;
-      top: ${100 + (orderWindowCounter % 5) * 30}px;
-      left: ${200 + (orderWindowCounter % 5) * 30}px;
-      width: 260px;
+      top: ${100 + (orderWindowCounter % 5) * 25}px;
+      left: ${150 + (orderWindowCounter % 5) * 25}px;
+      width: 340px;
       background: linear-gradient(145deg, #1e222d, #252932);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 8px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       z-index: 10001;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       color: #d1d4dc;
-      overflow: hidden;
     `;
 
     win.innerHTML = `
       <div class="order-header" style="
-        padding: 8px 10px;
-        background: rgba(0,0,0,0.2);
-        border-bottom: 1px solid rgba(255,255,255,0.1);
+        padding: 5px 8px;
+        background: rgba(0,0,0,0.3);
         cursor: move;
         display: flex;
         justify-content: space-between;
         align-items: center;
       ">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="
-            font-size: 9px;
-            padding: 2px 6px;
-            border-radius: 3px;
-            background: ${optColor};
-            color: #fff;
-            font-weight: 600;
-          ">${optType}</span>
-          <span style="font-size: 12px; font-weight: 600; color: #fff;">${symbol} ${strike}</span>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 11px; font-weight: 600; color: #fff;">${symbol}</span>
+          <span style="font-size: 10px; color: ${optColor}; font-weight: 600;">${strike}${optType}</span>
+          <span style="font-size: 9px; color: #26a69a;">${bid.toFixed(2)}</span>
+          <span style="font-size: 9px; color: #606060;">/</span>
+          <span style="font-size: 9px; color: #ef5350;">${ask.toFixed(2)}</span>
         </div>
-        <button class="order-close" style="
-          background: none;
-          border: none;
-          color: #808080;
-          cursor: pointer;
-          font-size: 18px;
-          line-height: 1;
-          padding: 0 4px;
-          transition: color 0.15s;
-        ">&times;</button>
+        <button class="order-close" style="background:none;border:none;color:#606060;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;">&times;</button>
       </div>
 
-      <div style="padding: 10px;">
-        <!-- Bid/Ask Display -->
-        <div style="display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 11px;">
-          <div style="text-align: center;">
-            <div style="color: #808080; margin-bottom: 2px;">BID</div>
-            <div style="color: #26a69a; font-weight: 600; font-size: 13px;">${bid.toFixed(2)}</div>
+      <div style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
+        <!-- Row 1: Buy/Sell toggle + Order Type + TIF -->
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <div class="order-side-toggle" style="display:flex; border-radius:3px; overflow:hidden; border:1px solid rgba(255,255,255,0.1);">
+            <button class="side-btn buy-btn active" data-side="buy" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:#26a69a;color:#fff;">BUY</button>
+            <button class="side-btn sell-btn" data-side="sell" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:rgba(255,255,255,0.05);color:#606060;">SELL</button>
           </div>
-          <div style="text-align: center;">
-            <div style="color: #808080; margin-bottom: 2px;">MID</div>
-            <div style="color: #d1d4dc; font-weight: 600; font-size: 13px;">${mid.toFixed(2)}</div>
+          <select class="order-type-select" style="flex:1;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
+            <option value="limit">Limit</option>
+            <option value="market">Market</option>
+            <option value="stop">Stop</option>
+            <option value="stop_limit">Stop Lmt</option>
+          </select>
+          <select class="order-tif-select" style="width:55px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
+            <option value="day">Day</option>
+            <option value="gtc">GTC</option>
+            <option value="ioc">IOC</option>
+            <option value="fok">FOK</option>
+          </select>
+        </div>
+
+        <!-- Row 2: Price + Qty + Presets -->
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <div class="price-row" style="display:flex;align-items:center;gap:2px;">
+            <button class="price-btn price-down" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">−</button>
+            <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:58px;padding:3px 4px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            <button class="price-btn price-up" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">+</button>
           </div>
-          <div style="text-align: center;">
-            <div style="color: #808080; margin-bottom: 2px;">ASK</div>
-            <div style="color: #ef5350; font-weight: 600; font-size: 13px;">${ask.toFixed(2)}</div>
+          <div style="display:flex;align-items:center;gap:2px;">
+            <button class="qty-btn qty-down" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">−</button>
+            <input type="number" class="qty-input" value="1" min="1" step="1" style="width:36px;padding:3px 4px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            <button class="qty-btn qty-up" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">+</button>
+          </div>
+          <div style="display:flex;gap:2px;">
+            <button class="qty-preset" data-qty="1" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">1</button>
+            <button class="qty-preset" data-qty="5" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">5</button>
+            <button class="qty-preset" data-qty="10" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">10</button>
+            <button class="qty-preset" data-qty="25" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">25</button>
           </div>
         </div>
 
-        <!-- Buy/Sell Toggle -->
-        <div class="order-side-toggle" style="
-          display: flex;
-          margin-bottom: 10px;
-          border-radius: 4px;
-          overflow: hidden;
-          border: 1px solid rgba(255,255,255,0.1);
-        ">
-          <button class="side-btn buy-btn active" data-side="buy" style="
-            flex: 1;
-            padding: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 12px;
-            transition: all 0.15s;
-            background: #26a69a;
-            color: #fff;
-          ">BUY</button>
-          <button class="side-btn sell-btn" data-side="sell" style="
-            flex: 1;
-            padding: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 12px;
-            transition: all 0.15s;
-            background: rgba(255,255,255,0.05);
-            color: #808080;
-          ">SELL</button>
-        </div>
-
-        <!-- Order Type -->
-        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-          <div style="flex: 1;">
-            <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">ORDER TYPE</label>
-            <select class="order-type-select" style="
-              width: 100%;
-              padding: 6px 8px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              font-size: 11px;
-              cursor: pointer;
-            ">
-              <option value="limit">Limit</option>
-              <option value="market">Market</option>
-              <option value="stop">Stop</option>
-              <option value="stop_limit">Stop Limit</option>
-            </select>
+        <!-- Row 3: Total + Submit -->
+        <div style="display: flex; gap: 6px; align-items: center;">
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:rgba(0,0,0,0.2);border-radius:3px;">
+            <span style="font-size:9px;color:#606060;">TOTAL</span>
+            <span class="order-total" style="font-size:11px;font-weight:600;color:#fff;">$${(mid * 100).toFixed(2)}</span>
           </div>
-          <div style="flex: 1;">
-            <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">TIME IN FORCE</label>
-            <select class="order-tif-select" style="
-              width: 100%;
-              padding: 6px 8px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              font-size: 11px;
-              cursor: pointer;
-            ">
-              <option value="day">Day</option>
-              <option value="gtc">GTC</option>
-              <option value="ioc">IOC</option>
-              <option value="fok">FOK</option>
-            </select>
-          </div>
+          <button class="order-submit" style="flex:1;padding:6px 12px;border:none;border-radius:3px;background:#26a69a;color:#fff;font-weight:600;font-size:11px;cursor:pointer;text-transform:uppercase;">Buy</button>
         </div>
-
-        <!-- Price Input -->
-        <div class="price-row" style="margin-bottom: 10px;">
-          <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">LIMIT PRICE</label>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="price-btn price-down" style="
-              width: 28px; height: 28px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              cursor: pointer;
-              font-size: 14px;
-              transition: background 0.15s;
-            ">−</button>
-            <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="
-              flex: 1;
-              padding: 6px 8px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #fff;
-              font-size: 13px;
-              font-weight: 600;
-              text-align: center;
-            ">
-            <button class="price-btn price-up" style="
-              width: 28px; height: 28px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              cursor: pointer;
-              font-size: 14px;
-              transition: background 0.15s;
-            ">+</button>
-          </div>
-        </div>
-
-        <!-- Quantity Input -->
-        <div style="margin-bottom: 10px;">
-          <label style="font-size: 9px; color: #808080; display: block; margin-bottom: 3px;">QUANTITY (CONTRACTS)</label>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="qty-btn qty-down" style="
-              width: 28px; height: 28px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              cursor: pointer;
-              font-size: 14px;
-              transition: background 0.15s;
-            ">−</button>
-            <input type="number" class="qty-input" value="1" min="1" step="1" style="
-              flex: 1;
-              padding: 6px 8px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #fff;
-              font-size: 13px;
-              font-weight: 600;
-              text-align: center;
-            ">
-            <button class="qty-btn qty-up" style="
-              width: 28px; height: 28px;
-              border: 1px solid rgba(255,255,255,0.1);
-              border-radius: 4px;
-              background: rgba(0,0,0,0.2);
-              color: #d1d4dc;
-              cursor: pointer;
-              font-size: 14px;
-              transition: background 0.15s;
-            ">+</button>
-          </div>
-          <div style="display: flex; gap: 4px; margin-top: 4px;">
-            <button class="qty-preset" data-qty="1" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">1</button>
-            <button class="qty-preset" data-qty="5" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">5</button>
-            <button class="qty-preset" data-qty="10" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">10</button>
-            <button class="qty-preset" data-qty="25" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">25</button>
-            <button class="qty-preset" data-qty="50" style="flex:1; padding: 3px; border: 1px solid rgba(255,255,255,0.1); border-radius: 3px; background: rgba(0,0,0,0.2); color: #808080; cursor: pointer; font-size: 9px;">50</button>
-          </div>
-        </div>
-
-        <!-- Order Total -->
-        <div style="
-          padding: 8px;
-          background: rgba(0,0,0,0.2);
-          border-radius: 4px;
-          margin-bottom: 10px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        ">
-          <span style="font-size: 10px; color: #808080;">EST. TOTAL</span>
-          <span class="order-total" style="font-size: 14px; font-weight: 600; color: #fff;">$${(mid * 100).toFixed(2)}</span>
-        </div>
-
-        <!-- Submit Button -->
-        <button class="order-submit" style="
-          width: 100%;
-          padding: 10px;
-          border: none;
-          border-radius: 4px;
-          background: #26a69a;
-          color: #fff;
-          font-weight: 600;
-          font-size: 12px;
-          cursor: pointer;
-          transition: all 0.15s;
-          text-transform: uppercase;
-        ">Review Buy Order</button>
       </div>
     `;
 
@@ -710,16 +544,16 @@
         buyBtn.style.background = '#26a69a';
         buyBtn.style.color = '#fff';
         sellBtn.style.background = 'rgba(255,255,255,0.05)';
-        sellBtn.style.color = '#808080';
+        sellBtn.style.color = '#606060';
         submitBtn.style.background = '#26a69a';
-        submitBtn.textContent = 'Review Buy Order';
+        submitBtn.textContent = 'Buy';
       } else {
         sellBtn.style.background = '#ef5350';
         sellBtn.style.color = '#fff';
         buyBtn.style.background = 'rgba(255,255,255,0.05)';
-        buyBtn.style.color = '#808080';
+        buyBtn.style.color = '#606060';
         submitBtn.style.background = '#ef5350';
-        submitBtn.textContent = 'Review Sell Order';
+        submitBtn.textContent = 'Sell';
       }
     };
     buyBtn.onclick = () => updateSide('buy');
@@ -729,7 +563,7 @@
     const orderTypeSelect = win.querySelector('.order-type-select');
     const priceRow = win.querySelector('.price-row');
     orderTypeSelect.onchange = () => {
-      priceRow.style.display = orderTypeSelect.value === 'market' ? 'none' : 'block';
+      priceRow.style.display = orderTypeSelect.value === 'market' ? 'none' : 'flex';
       updateTotal();
     };
 
@@ -763,8 +597,8 @@
         qtyInput.value = btn.dataset.qty;
         updateTotal();
       };
-      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
-      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.2)'; };
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.15)'; this.style.color = '#fff'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.2)'; this.style.color = '#606060'; };
     });
 
     // Update total
@@ -793,8 +627,8 @@
 
     // Button hover effects
     win.querySelectorAll('.price-btn, .qty-btn').forEach(btn => {
-      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.1)'; };
-      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.2)'; };
+      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.15)'; };
+      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.3)'; };
     });
   }
 
