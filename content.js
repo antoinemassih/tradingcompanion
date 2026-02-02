@@ -824,12 +824,12 @@
           <div style="display: flex; gap: 6px; align-items: center;">
             <div class="price-row" style="display:flex;align-items:center;gap:2px;">
               <button class="price-btn price-down" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">−</button>
-              <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:58px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+              <input type="text" class="price-input" value="${mid.toFixed(2)}" style="width:58px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
               <button class="price-btn price-up" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">+</button>
             </div>
             <div style="display:flex;align-items:center;gap:2px;">
               <button class="qty-btn qty-down" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">−</button>
-              <input type="number" class="qty-input" value="1" min="1" step="1" style="width:36px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+              <input type="text" class="qty-input" value="1" style="width:36px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
               <button class="qty-btn qty-up" style="width:22px;height:24px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:14px;font-weight:bold;">+</button>
             </div>
             <div style="display:flex;gap:2px;">
@@ -943,12 +943,18 @@
     const priceInput = win.querySelector('.price-input');
     priceInput.oninput = updateTotal;
 
+    // Helper to get valid price
+    const getPrice = () => {
+      const val = parseFloat(priceInput.value);
+      return isNaN(val) ? mid : val;
+    };
+
     win.querySelector('.price-down').onclick = () => {
-      priceInput.value = Math.max(0.01, parseFloat(priceInput.value) - 0.05).toFixed(2);
+      priceInput.value = Math.max(0.01, getPrice() - 0.05).toFixed(2);
       updateTotal();
     };
     win.querySelector('.price-up').onclick = () => {
-      priceInput.value = (parseFloat(priceInput.value) + 0.05).toFixed(2);
+      priceInput.value = (getPrice() + 0.05).toFixed(2);
       updateTotal();
     };
 
@@ -972,12 +978,18 @@
     const qtyInput = win.querySelector('.qty-input');
     qtyInput.oninput = updateTotal;
 
+    // Helper to get valid quantity
+    const getQty = () => {
+      const val = parseInt(qtyInput.value);
+      return isNaN(val) || val < 1 ? 1 : val;
+    };
+
     win.querySelector('.qty-down').onclick = () => {
-      qtyInput.value = Math.max(1, parseInt(qtyInput.value) - 1);
+      qtyInput.value = Math.max(1, getQty() - 1);
       updateTotal();
     };
     win.querySelector('.qty-up').onclick = () => {
-      qtyInput.value = parseInt(qtyInput.value) + 1;
+      qtyInput.value = getQty() + 1;
       updateTotal();
     };
 
@@ -1000,8 +1012,8 @@
     // Update total
     const totalEl = win.querySelector('.order-total');
     function updateTotal() {
-      const price = orderTypeSelect.value === 'market' ? (currentSide === 'buy' ? ask : bid) : parseFloat(priceInput.value);
-      const qty = parseInt(qtyInput.value) || 1;
+      const price = orderTypeSelect.value === 'market' ? (currentSide === 'buy' ? ask : bid) : getPrice();
+      const qty = getQty();
       const total = price * qty * 100; // Options are 100 shares per contract
       totalEl.textContent = total.toFixed(2);
     }
@@ -1012,8 +1024,8 @@
     submitBtn.onclick = async () => {
       const orderType = orderTypeSelect.value;
       const tif = win.querySelector('.order-tif-select').value;
-      const price = orderType === 'market' ? (currentSide === 'buy' ? ask : bid) : parseFloat(priceInput.value);
-      const qty = parseInt(qtyInput.value) || 1;
+      const price = orderType === 'market' ? (currentSide === 'buy' ? ask : bid) : getPrice();
+      const qty = getQty();
 
       // Create order object
       const order = {
