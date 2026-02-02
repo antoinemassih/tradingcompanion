@@ -253,12 +253,13 @@
   function updateColumnHeaders() {
     const colHeaders = document.getElementById('options-col-headers');
     if (dualColumnMode) {
+      // C2 (next) | C1 (today) | Strike | P1 (today) | P2 (next)
       colHeaders.innerHTML = `
-        <div style="flex: 1; text-align: center; color: #26a69a; font-size: 8px;">C1</div>
-        <div style="flex: 1; text-align: center; color: #ef5350; font-size: 8px;">P1</div>
-        <div style="width: 40px; text-align: center; font-size: 8px;">STK</div>
-        <div style="flex: 1; text-align: center; color: #26a69a; font-size: 8px;">C2</div>
-        <div style="flex: 1; text-align: center; color: #ef5350; font-size: 8px;">P2</div>
+        <div style="flex: 1; text-align: center; color: #26a69a;">C2</div>
+        <div style="flex: 1; text-align: center; color: #26a69a;">C1</div>
+        <div style="width: 44px; text-align: center;">Strike</div>
+        <div style="flex: 1; text-align: center; color: #ef5350;">P1</div>
+        <div style="flex: 1; text-align: center; color: #ef5350;">P2</div>
       `;
     } else {
       colHeaders.innerHTML = `
@@ -549,50 +550,51 @@
         const itmCall = currentPrice && strike < currentPrice;
         const itmPut = currentPrice && strike > currentPrice;
 
+        // Order: C2 (next) | C1 (today) | Strike | P1 (today) | P2 (next)
         html += `
           <div class="opt-row" data-strike="${strike}" style="
             display: flex; align-items: center;
-            padding: 3px 4px;
+            padding: 4px 6px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
-            ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 2px solid #2962ff;' : ''}
+            ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 3px solid #2962ff;' : ''}
           ">
-            <div class="opt-cell opt-call" data-type="call" data-col="1" style="
-              flex: 1; text-align: center;
-              padding: 2px; margin: 1px;
-              border-radius: 3px;
-              font-size: 10px; font-weight: 500;
-              cursor: pointer;
-              background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
-              color: #26a69a;
-            " title="C1 ${strike}: ${call1?.bid?.toFixed(2) || '-'}/${call1?.ask?.toFixed(2) || '-'}">${call1 ? fmtOpt(call1.lastPrice) : '-'}</div>
-            <div class="opt-cell opt-put" data-type="put" data-col="1" style="
-              flex: 1; text-align: center;
-              padding: 2px; margin: 1px;
-              border-radius: 3px;
-              font-size: 10px; font-weight: 500;
-              cursor: pointer;
-              background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
-              color: #ef5350;
-            " title="P1 ${strike}: ${put1?.bid?.toFixed(2) || '-'}/${put1?.ask?.toFixed(2) || '-'}">${put1 ? fmtOpt(put1.lastPrice) : '-'}</div>
-            <div style="
-              width: 36px; text-align: center;
-              font-size: 10px; font-weight: 600;
-              color: ${isATM ? '#fff' : '#d1d4dc'};
-            ">${strike}</div>
             <div class="opt-cell opt-call" data-type="call" data-col="2" style="
               flex: 1; text-align: center;
-              padding: 2px; margin: 1px;
-              border-radius: 3px;
-              font-size: 10px; font-weight: 500;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
               cursor: pointer;
               background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
               color: #26a69a;
             " title="C2 ${strike}: ${call2?.bid?.toFixed(2) || '-'}/${call2?.ask?.toFixed(2) || '-'}">${call2 ? fmtOpt(call2.lastPrice) : '-'}</div>
+            <div class="opt-cell opt-call" data-type="call" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmCall ? 'rgba(38,166,154,0.25)' : 'rgba(38,166,154,0.1)'};
+              color: #26a69a;
+            " title="C1 ${strike}: ${call1?.bid?.toFixed(2) || '-'}/${call1?.ask?.toFixed(2) || '-'}">${call1 ? fmtOpt(call1.lastPrice) : '-'}</div>
+            <div style="
+              width: 44px; text-align: center;
+              font-size: 11px; font-weight: 600;
+              color: ${isATM ? '#fff' : '#d1d4dc'};
+            ">${strike}</div>
+            <div class="opt-cell opt-put" data-type="put" data-col="1" style="
+              flex: 1; text-align: center;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
+              cursor: pointer;
+              background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
+              color: #ef5350;
+            " title="P1 ${strike}: ${put1?.bid?.toFixed(2) || '-'}/${put1?.ask?.toFixed(2) || '-'}">${put1 ? fmtOpt(put1.lastPrice) : '-'}</div>
             <div class="opt-cell opt-put" data-type="put" data-col="2" style="
               flex: 1; text-align: center;
-              padding: 2px; margin: 1px;
-              border-radius: 3px;
-              font-size: 10px; font-weight: 500;
+              padding: 3px 4px; margin: 1px;
+              border-radius: 4px;
+              font-size: 11px; font-weight: 500;
               cursor: pointer;
               background: ${itmPut ? 'rgba(239,83,80,0.25)' : 'rgba(239,83,80,0.1)'};
               color: #ef5350;
@@ -740,67 +742,99 @@
           <span style="font-size: 11px; font-weight: 600; color: #fff;">${symbol}</span>
           <span style="font-size: 10px; color: ${optColor}; font-weight: 600;">${strike}${optType}</span>
           ${expLabel ? `<span style="font-size: 9px; color: #a0a0a0;">${expLabel}</span>` : ''}
-          <span style="font-size: 9px; color: #26a69a;">${bid.toFixed(2)}</span>
-          <span style="font-size: 9px; color: #606060;">/</span>
-          <span style="font-size: 9px; color: #ef5350;">${ask.toFixed(2)}</span>
         </div>
         <button class="order-close" style="background:none;border:none;color:#606060;cursor:pointer;font-size:14px;line-height:1;padding:0 2px;">&times;</button>
       </div>
 
-      <div style="padding: 8px; display: flex; flex-direction: column; gap: 6px;">
-        <!-- Row 1: Buy/Sell toggle + Order Type + TIF -->
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <div class="order-side-toggle" style="display:flex; border-radius:3px; overflow:hidden; border:1px solid rgba(255,255,255,0.1);">
-            <button class="side-btn buy-btn active" data-side="buy" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:#26a69a;color:#fff;">BUY</button>
-            <button class="side-btn sell-btn" data-side="sell" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:rgba(255,255,255,0.05);color:#606060;">SELL</button>
-          </div>
-          <select class="order-type-select" style="flex:1;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
-            <option value="limit">Limit</option>
-            <option value="market">Market</option>
-            <option value="stop">Stop</option>
-            <option value="stop_limit">Stop Lmt</option>
-          </select>
-          <select class="order-tif-select" style="width:55px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
-            <option value="day">Day</option>
-            <option value="gtc">GTC</option>
-            <option value="ioc">IOC</option>
-            <option value="fok">FOK</option>
-          </select>
+      <div style="padding: 8px; display: flex; gap: 8px;">
+        <!-- Left: Large Bid/Ask buttons -->
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <button class="bid-btn" style="
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(38,166,154,0.2);
+            color: #26a69a;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 70px;
+            transition: all 0.15s;
+          " title="Click to set price to bid">
+            <div style="font-size: 9px; font-weight: 500; opacity: 0.7;">BID</div>
+            ${bid.toFixed(2)}
+          </button>
+          <button class="ask-btn" style="
+            padding: 8px 12px;
+            border: none;
+            border-radius: 4px;
+            background: rgba(239,83,80,0.2);
+            color: #ef5350;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            min-width: 70px;
+            transition: all 0.15s;
+          " title="Click to set price to ask">
+            <div style="font-size: 9px; font-weight: 500; opacity: 0.7;">ASK</div>
+            ${ask.toFixed(2)}
+          </button>
         </div>
 
-        <!-- Row 2: Price + Qty + Presets -->
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <div class="price-row" style="display:flex;align-items:center;gap:2px;">
-            <button class="price-btn price-down" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">−</button>
-            <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:58px;padding:3px 4px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
-            <button class="price-btn price-up" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">+</button>
+        <!-- Right: Order controls -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+          <!-- Row 1: Buy/Sell toggle + Order Type + TIF -->
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <div class="order-side-toggle" style="display:flex; border-radius:3px; overflow:hidden; border:1px solid rgba(255,255,255,0.1);">
+              <button class="side-btn buy-btn active" data-side="buy" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:#26a69a;color:#fff;">BUY</button>
+              <button class="side-btn sell-btn" data-side="sell" style="padding:4px 10px;border:none;cursor:pointer;font-weight:600;font-size:10px;background:rgba(255,255,255,0.05);color:#606060;">SELL</button>
+            </div>
+            <select class="order-type-select" style="flex:1;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
+              <option value="limit">Limit</option>
+              <option value="market">Market</option>
+              <option value="stop">Stop</option>
+              <option value="stop_limit">Stop Lmt</option>
+            </select>
+            <select class="order-tif-select" style="width:50px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;font-size:10px;cursor:pointer;">
+              <option value="day">Day</option>
+              <option value="gtc">GTC</option>
+              <option value="ioc">IOC</option>
+              <option value="fok">FOK</option>
+            </select>
           </div>
-          <div style="display:flex;align-items:center;gap:2px;">
-            <button class="qty-btn qty-down" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">−</button>
-            <input type="number" class="qty-input" value="1" min="1" step="1" style="width:36px;padding:3px 4px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
-            <button class="qty-btn qty-up" style="width:20px;height:22px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#d1d4dc;cursor:pointer;font-size:12px;">+</button>
-          </div>
-          <div style="display:flex;gap:2px;">
-            <button class="qty-preset" data-qty="1" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">1</button>
-            <button class="qty-preset" data-qty="5" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">5</button>
-            <button class="qty-preset" data-qty="10" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">10</button>
-            <button class="qty-preset" data-qty="25" style="padding:3px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">25</button>
-          </div>
-        </div>
 
-        <!-- Row 3: Auto toggle + Total + Submit -->
-        <div style="display: flex; gap: 6px; align-items: center;">
-          <div class="auto-toggle" style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;cursor:pointer;" title="Auto: Submit order immediately">
-            <span style="font-size:9px;color:#606060;">AUTO</span>
-            <div class="toggle-switch" style="width:24px;height:14px;background:rgba(255,255,255,0.1);border-radius:7px;position:relative;transition:background 0.2s;">
-              <div class="toggle-knob" style="width:10px;height:10px;background:#606060;border-radius:50%;position:absolute;top:2px;left:2px;transition:all 0.2s;"></div>
+          <!-- Row 2: Price + Qty + Presets -->
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <div class="price-row" style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:9px;color:#606060;">@</span>
+              <input type="number" class="price-input" value="${mid.toFixed(2)}" step="0.01" style="width:60px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:9px;color:#606060;">x</span>
+              <input type="number" class="qty-input" value="1" min="1" step="1" style="width:40px;padding:4px 6px;border:1px solid rgba(255,255,255,0.1);border-radius:3px;background:rgba(0,0,0,0.3);color:#fff;font-size:11px;font-weight:600;text-align:center;">
+            </div>
+            <div style="display:flex;gap:2px;">
+              <button class="qty-preset" data-qty="1" style="padding:4px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">1</button>
+              <button class="qty-preset" data-qty="5" style="padding:4px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">5</button>
+              <button class="qty-preset" data-qty="10" style="padding:4px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">10</button>
+              <button class="qty-preset" data-qty="25" style="padding:4px 6px;border:1px solid rgba(255,255,255,0.08);border-radius:2px;background:rgba(0,0,0,0.2);color:#606060;cursor:pointer;font-size:9px;">25</button>
             </div>
           </div>
-          <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;">
-            <span style="font-size:9px;color:#606060;">$</span>
-            <span class="order-total" style="font-size:11px;font-weight:600;color:#fff;">${(mid * 100).toFixed(2)}</span>
+
+          <!-- Row 3: Auto toggle + Total + Submit -->
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <div class="auto-toggle" style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;cursor:pointer;" title="Auto: Submit order immediately">
+              <span style="font-size:9px;color:#606060;">AUTO</span>
+              <div class="toggle-switch" style="width:24px;height:14px;background:rgba(255,255,255,0.1);border-radius:7px;position:relative;transition:background 0.2s;">
+                <div class="toggle-knob" style="width:10px;height:10px;background:#606060;border-radius:50%;position:absolute;top:2px;left:2px;transition:all 0.2s;"></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:4px;padding:4px 6px;background:rgba(0,0,0,0.2);border-radius:3px;">
+              <span style="font-size:9px;color:#606060;">$</span>
+              <span class="order-total" style="font-size:11px;font-weight:600;color:#fff;">${(mid * 100).toFixed(2)}</span>
+            </div>
+            <button class="order-submit" style="flex:1;padding:6px 12px;border:none;border-radius:3px;background:#26a69a;color:#fff;font-weight:600;font-size:11px;cursor:pointer;text-transform:uppercase;">Buy</button>
           </div>
-          <button class="order-submit" style="flex:1;padding:6px 12px;border:none;border-radius:3px;background:#26a69a;color:#fff;font-weight:600;font-size:11px;cursor:pointer;text-transform:uppercase;">Buy</button>
         </div>
       </div>
     `;
@@ -886,28 +920,28 @@
       updateTotal();
     };
 
-    // Price buttons
+    // Price input
     const priceInput = win.querySelector('.price-input');
-    win.querySelector('.price-down').onclick = () => {
-      priceInput.value = Math.max(0.01, parseFloat(priceInput.value) - 0.05).toFixed(2);
-      updateTotal();
-    };
-    win.querySelector('.price-up').onclick = () => {
-      priceInput.value = (parseFloat(priceInput.value) + 0.05).toFixed(2);
-      updateTotal();
-    };
     priceInput.oninput = updateTotal;
 
-    // Quantity buttons
+    // Bid/Ask buttons - click to set price
+    const bidBtn = win.querySelector('.bid-btn');
+    const askBtn = win.querySelector('.ask-btn');
+    bidBtn.onclick = () => {
+      priceInput.value = bid.toFixed(2);
+      updateTotal();
+    };
+    askBtn.onclick = () => {
+      priceInput.value = ask.toFixed(2);
+      updateTotal();
+    };
+    bidBtn.onmouseover = function() { this.style.background = 'rgba(38,166,154,0.35)'; };
+    bidBtn.onmouseout = function() { this.style.background = 'rgba(38,166,154,0.2)'; };
+    askBtn.onmouseover = function() { this.style.background = 'rgba(239,83,80,0.35)'; };
+    askBtn.onmouseout = function() { this.style.background = 'rgba(239,83,80,0.2)'; };
+
+    // Quantity input
     const qtyInput = win.querySelector('.qty-input');
-    win.querySelector('.qty-down').onclick = () => {
-      qtyInput.value = Math.max(1, parseInt(qtyInput.value) - 1);
-      updateTotal();
-    };
-    win.querySelector('.qty-up').onclick = () => {
-      qtyInput.value = parseInt(qtyInput.value) + 1;
-      updateTotal();
-    };
     qtyInput.oninput = updateTotal;
 
     // Quantity presets
@@ -981,12 +1015,7 @@
       }
     };
 
-    // Button hover effects
-    win.querySelectorAll('.price-btn, .qty-btn').forEach(btn => {
-      btn.onmouseover = function() { this.style.background = 'rgba(255,255,255,0.15)'; };
-      btn.onmouseout = function() { this.style.background = 'rgba(0,0,0,0.3)'; };
-    });
-  }
+    }
 
   // ============ END OPTIONS CHAIN ============
 
