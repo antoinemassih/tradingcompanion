@@ -104,13 +104,19 @@
 
   // Override XMLHttpRequest
   XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-    this._tvUrl = url;
+    // Ensure URL is a string
+    this._tvUrl = typeof url === 'string' ? url : (url?.toString?.() || '');
     return originalXHROpen.apply(this, [method, url, ...rest]);
   };
 
   XMLHttpRequest.prototype.send = function(...args) {
     const xhr = this;
     const url = this._tvUrl || '';
+
+    // Safety check - ensure url is a string
+    if (typeof url !== 'string') {
+      return originalXHRSend.apply(this, args);
+    }
 
     // Only intercept TradingView data endpoints
     if (url.includes('tradingview.com') && (url.includes('/history') || url.includes('symbols'))) {
@@ -159,50 +165,85 @@
       ? new originalWebSocket(url, protocols)
       : new originalWebSocket(url);
 
+    log('WebSocket created:', url.substring(0, 80));
+
     // Only intercept TradingView WebSocket
     if (url.includes('tradingview.com') || url.includes('data.tradingview')) {
-      const originalOnMessage = ws.onmessage;
-
       // Use event listener to capture messages
       ws.addEventListener('message', function(event) {
         try {
-          // TradingView WebSocket sends various message types
-          // Real-time candle updates often come as JSON with specific prefixes
           const msg = event.data;
+          if (typeof msg !== 'string') return;
 
-          if (typeof msg === 'string' && msg.startsWith('~')) {
-            // TradingView uses ~ prefix for data messages
-            const jsonPart = msg.substring(msg.indexOf('{'));
-            if (jsonPart) {
-              const data = JSON.parse(jsonPart);
-              // Look for candle update patterns
+          // TradingView uses ~m~LENGTH~m~PAYLOAD format
+          // Split by ~m~ and process each packet
+          const packets = msg.split(/~m~\d+~m~/);
+
+          packets.forEach(packet => {
+            if (!packet || packet.length < 2) return;
+
+            // Try to parse as JSON
+            try {
+              // Find JSON object in packet
+              const jsonStart = packet.indexOf('{');
+              const jsonEnd = packet.lastIndexOf('}');
+              if (jsonStart === -1 || jsonEnd === -1) return;
+
+              const jsonStr = packet.substring(jsonStart, jsonEnd + 1);
+              const data = JSON.parse(jsonStr);
+
+              // Capture symbol from symbol_resolved message
+              if (data.m === 'symbol_resolved' && data.p) {
+                const symbolData = data.p[1];
+                if (symbolData && symbolData.name) {
+                  lastSymbol = symbolData.name;
+                  log('Symbol resolved:', lastSymbol);
+                }
+              }
+
+              // Capture resolution from create_series or modify_series
+              if ((data.m === 'create_series' || data.m === 'modify_series') && data.p) {
+                // Resolution is usually in the parameters
+                const params = data.p;
+                if (Array.isArray(params) && params.length >= 4) {
+                  const res = params[3]; // Resolution often at index 3
+                  if (typeof res === 'string' || typeof res === 'number') {
+                    lastResolution = String(res);
+                    log('Resolution set:', lastResolution);
+                  }
+                }
+              }
+
+              // Look for timescale_update messages (historical data)
+              if (data.m === 'timescale_update' && data.p) {
+                log('Found timescale_update message');
+                processTimescaleUpdate(data.p);
+              }
+
+              // Look for du (data update) messages (real-time)
+              if (data.m === 'du' && data.p) {
+                processDataUpdate(data.p);
+              }
+
+              // Look for series data in various formats
               if (data.p && Array.isArray(data.p)) {
-                // Real-time bar update
                 data.p.forEach(item => {
-                  if (item.v && item.v.length >= 6) {
-                    // Format: [timestamp, open, high, low, close, volume]
-                    const candle = {
-                      timestamp: item.v[0] * 1000,
-                      open: item.v[1],
-                      high: item.v[2],
-                      low: item.v[3],
-                      close: item.v[4],
-                      volume: item.v[5] || 0,
-                      symbol: lastSymbol,
-                      timeframe: lastResolution,
-                      isRealtime: true
-                    };
-                    relayToContentScript({
-                      candles: [candle],
-                      symbol: lastSymbol,
-                      timeframe: lastResolution,
-                      isRealtime: true
-                    });
+                  // Check for series data with 's' array (candles)
+                  if (item.s && Array.isArray(item.s)) {
+                    log('Found series data, length:', item.s.length);
+                    processSeriesData(item);
+                  }
+                  // Check for 'sds_1' or similar series data
+                  if (item.sds_1 && item.sds_1.s) {
+                    log('Found sds_1 series data');
+                    processSeriesData(item.sds_1);
                   }
                 });
               }
+            } catch (e) {
+              // Not valid JSON, skip
             }
-          }
+          });
         } catch (e) {
           // Silent fail for non-matching messages
         }
@@ -211,6 +252,68 @@
 
     return ws;
   };
+
+  // Process timescale_update messages (historical bars)
+  function processTimescaleUpdate(payload) {
+    if (!Array.isArray(payload)) return;
+
+    payload.forEach(item => {
+      if (item.sds_1 && item.sds_1.s) {
+        processSeriesData(item.sds_1);
+      }
+      if (item.s && Array.isArray(item.s)) {
+        processSeriesData(item);
+      }
+    });
+  }
+
+  // Process data update messages (real-time)
+  function processDataUpdate(payload) {
+    if (!Array.isArray(payload)) return;
+
+    payload.forEach(item => {
+      if (item.sds_1 && item.sds_1.s) {
+        processSeriesData(item.sds_1, true);
+      }
+      if (item.s && Array.isArray(item.s)) {
+        processSeriesData(item, true);
+      }
+    });
+  }
+
+  // Process series data (OHLCV candles)
+  function processSeriesData(seriesObj, isRealtime = false) {
+    if (!seriesObj || !seriesObj.s || !Array.isArray(seriesObj.s)) return;
+
+    const candles = [];
+    seriesObj.s.forEach(bar => {
+      // Bar format: { i: index, v: [timestamp, open, high, low, close, volume] }
+      if (bar.v && bar.v.length >= 5) {
+        candles.push({
+          timestamp: bar.v[0] * 1000,
+          open: bar.v[1],
+          high: bar.v[2],
+          low: bar.v[3],
+          close: bar.v[4],
+          volume: bar.v[5] || 0,
+          symbol: lastSymbol,
+          timeframe: lastResolution,
+          isRealtime: isRealtime
+        });
+      }
+    });
+
+    if (candles.length > 0) {
+      log('Processed', candles.length, 'candles, realtime:', isRealtime);
+      relayToContentScript({
+        candles: candles,
+        symbol: lastSymbol,
+        timeframe: lastResolution,
+        isRealtime: isRealtime
+      });
+    }
+  }
+
   // Copy static properties
   Object.keys(originalWebSocket).forEach(key => {
     window.WebSocket[key] = originalWebSocket[key];
