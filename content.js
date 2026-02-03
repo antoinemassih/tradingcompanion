@@ -90,6 +90,7 @@
 
       const msg = event.data;
       if (msg && msg.type === 'TV_CANDLE_DATA' && msg.source === 'tv-interceptor') {
+        console.log('[TV-Alert] Received candle data:', msg.data?.candles?.length, 'candles for', msg.data?.symbol);
         handleCandleData(msg.data);
       }
     });
@@ -785,7 +786,7 @@
             border-bottom: 1px solid rgba(255,255,255,0.05);
             ${isATM ? 'background: linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1)); border-left: 3px solid #2962ff;' : ''}
             transition: background 0.15s;
-          " onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='${isATM ? 'linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1))' : ''}'">
+          " data-atm="${isATM}">
             <div class="opt-cell opt-call" data-type="call" data-col="1" style="
               flex: 1; text-align: center;
               padding: 3px 4px; margin: 1px;
@@ -818,6 +819,18 @@
 
     list.innerHTML = html;
 
+    // Row hover handlers (for single column mode)
+    list.querySelectorAll('.opt-row').forEach(row => {
+      const isATM = row.dataset.atm === 'true';
+      const defaultBg = isATM ? 'linear-gradient(90deg, rgba(41,98,255,0.15), rgba(156,39,176,0.1))' : '';
+      row.addEventListener('mouseenter', () => {
+        row.style.background = 'rgba(255,255,255,0.08)';
+      });
+      row.addEventListener('mouseleave', () => {
+        row.style.background = defaultBg;
+      });
+    });
+
     // Click handlers
     list.querySelectorAll('.opt-cell').forEach(el => {
       el.onclick = (e) => {
@@ -840,8 +853,8 @@
           createOrderWindow(opt, isCall, strike, expDate);
         }
       };
-      el.onmouseover = () => el.style.transform = 'scale(1.03)';
-      el.onmouseout = () => el.style.transform = 'scale(1)';
+      el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.03)'; });
+      el.addEventListener('mouseleave', () => { el.style.transform = 'scale(1)'; });
     });
 
     // Scroll to ATM

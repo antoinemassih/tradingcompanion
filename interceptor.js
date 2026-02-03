@@ -5,8 +5,8 @@
 (function() {
   'use strict';
 
-  const DEBUG = false;
-  const log = (...args) => DEBUG && console.log('[TV-Interceptor]', ...args);
+  const DEBUG = true;
+  const log = (...args) => console.log('[TV-Interceptor]', ...args);
 
   // Store original functions
   const originalFetch = window.fetch;
@@ -78,11 +78,17 @@
     try {
       const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
 
-      // Only intercept TradingView data endpoints
-      if (url.includes('tradingview.com') && (url.includes('/history') || url.includes('symbols'))) {
+      // Log all fetch requests for debugging
+      if (url.includes('tradingview')) {
+        log('Fetch request:', url.substring(0, 150));
+      }
+
+      // Intercept TradingView data endpoints - broader matching
+      if (url.includes('tradingview') && (url.includes('/history') || url.includes('chart') || url.includes('data'))) {
         // Clone response to read it without consuming
         const clone = response.clone();
         clone.json().then(data => {
+          log('Fetch response data keys:', Object.keys(data || {}));
           const candleData = parseCandleData(url, data);
           if (candleData) {
             relayToContentScript(candleData);
@@ -211,5 +217,9 @@
   });
   window.WebSocket.prototype = originalWebSocket.prototype;
 
-  log('Interceptor installed');
+  log('Interceptor installed successfully');
+  log('Hooked: fetch, XMLHttpRequest, WebSocket');
+
+  // Test that we're in MAIN world by checking window
+  log('Window location:', window.location.hostname);
 })();
