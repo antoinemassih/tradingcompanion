@@ -19,6 +19,19 @@
   let optionsDataSource = null; // 'api', 'yahoo', or 'mock'
   let orderWindowCounter = 0; // For unique order window IDs
 
+  // Candle pattern detection state
+  let candleStore = {}; // { "AAPL:60": [candles], "AAPL:D": [candles] }
+  const MAX_CANDLES = 100;
+  let patternDetector = null;
+  let lastPatternCheck = 0;
+  let detectedPatterns = [];
+  let patternSettings = {
+    enabled: true,
+    minConfidence: 70,
+    showToast: true,
+    enabledPatterns: null // null = all enabled
+  };
+
   // Dual column options chain state
   let dualColumnMode = false;
   let availableExpirations = [];
@@ -33,6 +46,19 @@
 
     // Load API settings first
     loadApiSettings();
+    loadPatternSettings();
+
+    // Initialize pattern detector
+    if (typeof PatternDetector !== 'undefined') {
+      patternDetector = new PatternDetector({
+        minConfidence: patternSettings.minConfidence,
+        enabledPatterns: patternSettings.enabledPatterns
+      });
+      console.log('[TV-Alert] Pattern detector initialized');
+    }
+
+    // Listen for candle data from interceptor
+    setupCandleInterceptListener();
 
     // Wait for chart to load
     waitForChart().then(() => {
@@ -44,6 +70,147 @@
       createTradingButtons();
       createOptionsPanel();
     });
+  }
+
+  // Load pattern detection settings
+  function loadPatternSettings() {
+    chrome.storage.local.get(['patternSettings'], (result) => {
+      if (result.patternSettings) {
+        patternSettings = { ...patternSettings, ...result.patternSettings };
+        console.log('[TV-Alert] Loaded pattern settings');
+      }
+    });
+  }
+
+  // Listen for candle data from interceptor (via postMessage)
+  function setupCandleInterceptListener() {
+    window.addEventListener('message', (event) => {
+      // Only accept messages from same window
+      if (event.source !== window) return;
+
+      const msg = event.data;
+      if (msg && msg.type === 'TV_CANDLE_DATA' && msg.source === 'tv-interceptor') {
+        handleCandleData(msg.data);
+      }
+    });
+    console.log('[TV-Alert] Candle intercept listener ready');
+  }
+
+  // Handle incoming candle data
+  function handleCandleData(data) {
+    if (!data || !data.candles || data.candles.length === 0) return;
+
+    const { symbol, timeframe, candles, isRealtime } = data;
+    const key = `${symbol}:${timeframe}`;
+
+    // Initialize store for this symbol/timeframe if needed
+    if (!candleStore[key]) {
+      candleStore[key] = [];
+    }
+
+    if (isRealtime) {
+      // Real-time update: update or append the last candle
+      const lastCandle = candles[0];
+      const store = candleStore[key];
+
+      if (store.length > 0) {
+        const existing = store[store.length - 1];
+        if (existing.timestamp === lastCandle.timestamp) {
+          // Update existing candle
+          store[store.length - 1] = lastCandle;
+        } else {
+          // New candle
+          store.push(lastCandle);
+          if (store.length > MAX_CANDLES) store.shift();
+        }
+      } else {
+        store.push(lastCandle);
+      }
+    } else {
+      // Historical data: replace or merge
+      const store = candleStore[key];
+      candles.forEach(candle => {
+        const idx = store.findIndex(c => c.timestamp === candle.timestamp);
+        if (idx >= 0) {
+          store[idx] = candle;
+        } else {
+          store.push(candle);
+        }
+      });
+      // Sort by timestamp and limit
+      store.sort((a, b) => a.timestamp - b.timestamp);
+      while (store.length > MAX_CANDLES) store.shift();
+    }
+
+    // Run pattern detection (debounced)
+    runPatternDetection(key);
+  }
+
+  // Run pattern detection with debouncing
+  function runPatternDetection(storeKey) {
+    if (!patternSettings.enabled || !patternDetector) return;
+
+    const now = Date.now();
+    if (now - lastPatternCheck < 1000) return; // Max once per second
+    lastPatternCheck = now;
+
+    const candles = candleStore[storeKey];
+    if (!candles || candles.length < 3) return;
+
+    const patterns = patternDetector.detect(candles);
+
+    // Check for new patterns (not already detected)
+    patterns.forEach(pattern => {
+      const patternKey = `${pattern.name}-${pattern.timestamp}`;
+      const alreadyDetected = detectedPatterns.some(p =>
+        p.name === pattern.name && p.timestamp === pattern.timestamp
+      );
+
+      if (!alreadyDetected) {
+        // Add to detected list
+        detectedPatterns.push(pattern);
+        if (detectedPatterns.length > 50) detectedPatterns.shift();
+
+        // Show toast notification
+        if (patternSettings.showToast) {
+          showPatternToast(pattern);
+        }
+
+        // Notify sidepanel
+        chrome.runtime.sendMessage({
+          type: 'PATTERN_DETECTED',
+          pattern: pattern
+        }).catch(() => {});
+
+        console.log('[TV-Alert] Pattern detected:', pattern.name, pattern.confidence + '%');
+      }
+    });
+  }
+
+  // Show toast for detected pattern
+  function showPatternToast(pattern) {
+    const icon = pattern.direction === 'bullish' ? '📈' : (pattern.direction === 'bearish' ? '📉' : '⚖️');
+    const color = pattern.direction === 'bullish' ? '#26a69a' : (pattern.direction === 'bearish' ? '#ef5350' : '#ff9800');
+    const toastType = pattern.direction === 'bullish' ? 'above' : (pattern.direction === 'bearish' ? 'below' : 'alert');
+
+    showToast(
+      `<strong style="color:${color}">${icon} ${pattern.name}</strong><br>` +
+      `${pattern.symbol || currentSymbol} (${formatTimeframe(pattern.timeframe)})<br>` +
+      `<span style="opacity:0.8">Confidence: ${pattern.confidence}%</span>`,
+      toastType,
+      5000
+    );
+  }
+
+  // Format timeframe for display
+  function formatTimeframe(tf) {
+    if (!tf) return '';
+    const map = {
+      '1': '1m', '3': '3m', '5': '5m', '15': '15m', '30': '30m',
+      '60': '1h', '120': '2h', '240': '4h', '360': '6h', '480': '8h', '720': '12h',
+      'D': 'Daily', '1D': 'Daily', 'W': 'Weekly', '1W': 'Weekly', 'M': 'Monthly', '1M': 'Monthly'
+    };
+    return map[tf] || tf;
   }
 
   // Load API settings from storage
@@ -1916,6 +2083,26 @@
             fetchOptionsData(currentSymbol);
           }
           sendResponse({ success: true });
+          break;
+
+        case 'PATTERN_SETTINGS_UPDATED':
+          patternSettings = { ...patternSettings, ...message.settings };
+          if (patternDetector) {
+            patternDetector = new PatternDetector({
+              minConfidence: patternSettings.minConfidence,
+              enabledPatterns: patternSettings.enabledPatterns
+            });
+          }
+          console.log('[TV-Alert] Pattern settings updated');
+          sendResponse({ success: true });
+          break;
+
+        case 'GET_PATTERNS':
+          sendResponse({ patterns: detectedPatterns });
+          break;
+
+        case 'GET_CANDLES':
+          sendResponse({ candles: candleStore });
           break;
       }
       return true;

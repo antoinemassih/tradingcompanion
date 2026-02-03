@@ -23,7 +23,16 @@
         "https://www.tradingview.com/chart/*",
         "https://tradingview.com/chart/*"
       ],
-      "js": ["content.js"],
+      "js": ["interceptor.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.tradingview.com/chart/*",
+        "https://tradingview.com/chart/*"
+      ],
+      "js": ["patterns.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

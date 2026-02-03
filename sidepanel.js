@@ -27,6 +27,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   const buyCountEl = document.getElementById('buyCount');
   const sellCountEl = document.getElementById('sellCount');
 
+  // Elements - Patterns Tab
+  const patternList = document.getElementById('patternList');
+  const patternsBadge = document.getElementById('patternsBadge');
+  const patternsEnabled = document.getElementById('patternsEnabled');
+  const minConfidence = document.getElementById('minConfidence');
+  const confidenceValue = document.getElementById('confidenceValue');
+  const patternToast = document.getElementById('patternToast');
+  const clearPatternsBtn = document.getElementById('clearPatterns');
+
   // Elements - Settings Modal
   const settingsModal = document.getElementById('settingsModal');
   const closeSettingsBtn = document.getElementById('closeSettings');
@@ -49,16 +58,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentPrice = null;
   let currentSymbol = '';
   let currentOrderFilter = 'all';
+  let detectedPatterns = [];
 
   // Initialize
   await loadAlerts();
   await loadOrders();
   await loadTrades();
+  await loadPatterns();
   await loadApiSettings();
+  await loadPatternSettings();
   await checkConnection();
   setupTabs();
   setupSettingsModal();
   setupOrderFilters();
+  setupPatternControls();
 
   // Poll for price updates
   setInterval(checkConnection, 2000);
@@ -86,6 +99,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           loadTrades();
         } else if (targetTab === 'orders') {
           loadOrders();
+        } else if (targetTab === 'patterns') {
+          loadPatterns();
         }
       });
     });
@@ -435,7 +450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Auto-refresh trades when tab is active
+  // Auto-refresh tabs when active
   setInterval(() => {
     const tradesTab = document.querySelector('.nav-tab[data-tab="trades"]');
     if (tradesTab.classList.contains('active')) {
@@ -444,6 +459,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ordersTab = document.querySelector('.nav-tab[data-tab="orders"]');
     if (ordersTab.classList.contains('active')) {
       loadOrders();
+    }
+    const patternsTab = document.querySelector('.nav-tab[data-tab="patterns"]');
+    if (patternsTab && patternsTab.classList.contains('active')) {
+      loadPatterns();
     }
   }, 5000);
 
@@ -546,13 +565,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     await chrome.storage.local.set({ optionOrders: orders });
     loadOrders();
   }
-
-  // Listen for new orders from content script
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'ORDER_CREATED') {
-      loadOrders();
-    }
-  });
 
   // ============ SETTINGS MODAL ============
 
@@ -663,4 +675,162 @@ document.addEventListener('DOMContentLoaded', async () => {
     apiTestResult.textContent = message;
     apiTestResult.style.display = 'block';
   }
+
+  // ============ PATTERNS TAB ============
+
+  async function loadPatterns() {
+    try {
+      // Get patterns from content script
+      const tvTabs = await chrome.tabs.query({
+        url: ['https://www.tradingview.com/chart/*', 'https://tradingview.com/chart/*']
+      });
+
+      if (tvTabs.length > 0) {
+        const response = await chrome.tabs.sendMessage(tvTabs[0].id, { type: 'GET_PATTERNS' });
+        if (response && response.patterns) {
+          detectedPatterns = response.patterns;
+        }
+      }
+
+      renderPatterns(detectedPatterns);
+    } catch (e) {
+      console.error('Failed to load patterns:', e);
+      renderPatterns([]);
+    }
+  }
+
+  function renderPatterns(patterns) {
+    if (patternsBadge) {
+      patternsBadge.textContent = patterns.length;
+    }
+
+    if (!patternList) return;
+
+    if (patterns.length === 0) {
+      patternList.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24">
+            <path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99z"/>
+          </svg>
+          <p>No patterns detected yet</p>
+          <p class="hint">Patterns will appear here when detected on the chart</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Sort by timestamp descending (newest first)
+    const sortedPatterns = [...patterns].sort((a, b) => b.timestamp - a.timestamp);
+
+    patternList.innerHTML = sortedPatterns.map(pattern => {
+      const date = new Date(pattern.timestamp);
+      const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const icon = pattern.direction === 'bullish' ? '📈' : (pattern.direction === 'bearish' ? '📉' : '⚖️');
+      const confClass = pattern.confidence >= 80 ? 'high' : (pattern.confidence >= 65 ? 'medium' : 'low');
+
+      return `
+        <div class="pattern-item ${pattern.direction}">
+          <div class="pattern-direction">${icon}</div>
+          <div class="pattern-info">
+            <div class="pattern-name">${pattern.name}</div>
+            <div class="pattern-meta">${pattern.symbol || ''} ${formatTimeframe(pattern.timeframe)} • ${timeStr}</div>
+          </div>
+          <div class="pattern-confidence ${confClass}">${pattern.confidence}%</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function formatTimeframe(tf) {
+    if (!tf) return '';
+    const map = {
+      '1': '1m', '3': '3m', '5': '5m', '15': '15m', '30': '30m',
+      '60': '1h', '120': '2h', '240': '4h', '360': '6h', '480': '8h', '720': '12h',
+      'D': 'Daily', '1D': 'Daily', 'W': 'Weekly', '1W': 'Weekly', 'M': 'Monthly', '1M': 'Monthly'
+    };
+    return map[tf] || tf;
+  }
+
+  async function loadPatternSettings() {
+    try {
+      const result = await chrome.storage.local.get(['patternSettings']);
+      const settings = result.patternSettings || { enabled: true, minConfidence: 70, showToast: true };
+
+      if (patternsEnabled) patternsEnabled.checked = settings.enabled;
+      if (minConfidence) {
+        minConfidence.value = settings.minConfidence;
+        if (confidenceValue) confidenceValue.textContent = settings.minConfidence + '%';
+      }
+      if (patternToast) patternToast.checked = settings.showToast;
+    } catch (e) {
+      console.error('Failed to load pattern settings:', e);
+    }
+  }
+
+  function setupPatternControls() {
+    // Confidence slider
+    if (minConfidence) {
+      minConfidence.addEventListener('input', () => {
+        if (confidenceValue) confidenceValue.textContent = minConfidence.value + '%';
+      });
+
+      minConfidence.addEventListener('change', savePatternSettings);
+    }
+
+    // Enabled toggle
+    if (patternsEnabled) {
+      patternsEnabled.addEventListener('change', savePatternSettings);
+    }
+
+    // Toast toggle
+    if (patternToast) {
+      patternToast.addEventListener('change', savePatternSettings);
+    }
+
+    // Clear patterns button
+    if (clearPatternsBtn) {
+      clearPatternsBtn.addEventListener('click', () => {
+        detectedPatterns = [];
+        renderPatterns([]);
+      });
+    }
+  }
+
+  async function savePatternSettings() {
+    const settings = {
+      enabled: patternsEnabled ? patternsEnabled.checked : true,
+      minConfidence: minConfidence ? parseInt(minConfidence.value) : 70,
+      showToast: patternToast ? patternToast.checked : true
+    };
+
+    try {
+      await chrome.storage.local.set({ patternSettings: settings });
+
+      // Notify content script
+      const tvTabs = await chrome.tabs.query({
+        url: ['https://www.tradingview.com/chart/*', 'https://tradingview.com/chart/*']
+      });
+
+      tvTabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, {
+          type: 'PATTERN_SETTINGS_UPDATED',
+          settings: settings
+        }).catch(() => {});
+      });
+    } catch (e) {
+      console.error('Failed to save pattern settings:', e);
+    }
+  }
+
+  // Listen for pattern detection from content script
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type === 'ORDER_CREATED') {
+      loadOrders();
+    } else if (message.type === 'PATTERN_DETECTED') {
+      // Add to local list and re-render
+      detectedPatterns.unshift(message.pattern);
+      if (detectedPatterns.length > 50) detectedPatterns.pop();
+      renderPatterns(detectedPatterns);
+    }
+  });
 });
