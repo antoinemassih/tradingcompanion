@@ -101,8 +101,17 @@
   function handleCandleData(data) {
     if (!data || !data.candles || data.candles.length === 0) return;
 
-    const { symbol, timeframe, candles, isRealtime } = data;
+    const { timeframe, candles, isRealtime } = data;
+    // Use provided symbol or fall back to currentSymbol from page
+    const symbol = data.symbol || currentSymbol || 'UNKNOWN';
     const key = `${symbol}:${timeframe}`;
+
+    // Update candles with symbol if it was missing
+    if (!data.symbol && symbol !== 'UNKNOWN') {
+      candles.forEach(c => c.symbol = symbol);
+    }
+
+    console.log('[TV-Alert] Processing candles for key:', key, 'count:', candles.length);
 
     // Initialize store for this symbol/timeframe if needed
     if (!candleStore[key]) {
@@ -149,16 +158,28 @@
 
   // Run pattern detection with debouncing
   function runPatternDetection(storeKey) {
-    if (!patternSettings.enabled || !patternDetector) return;
+    if (!patternSettings.enabled) {
+      console.log('[TV-Alert] Pattern detection disabled');
+      return;
+    }
+    if (!patternDetector) {
+      console.log('[TV-Alert] Pattern detector not initialized');
+      return;
+    }
 
     const now = Date.now();
     if (now - lastPatternCheck < 1000) return; // Max once per second
     lastPatternCheck = now;
 
     const candles = candleStore[storeKey];
-    if (!candles || candles.length < 3) return;
+    if (!candles || candles.length < 3) {
+      console.log('[TV-Alert] Not enough candles for pattern detection:', candles?.length || 0);
+      return;
+    }
 
+    console.log('[TV-Alert] Running pattern detection on', candles.length, 'candles for', storeKey);
     const patterns = patternDetector.detect(candles);
+    console.log('[TV-Alert] Detected', patterns.length, 'patterns');
 
     // Check for new patterns (not already detected)
     patterns.forEach(pattern => {

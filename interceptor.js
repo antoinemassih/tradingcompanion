@@ -17,6 +17,29 @@
   let lastSymbol = '';
   let lastResolution = '';
 
+  // Try to extract symbol from URL
+  function getSymbolFromUrl() {
+    try {
+      const url = window.location.href;
+      // TradingView URLs often have symbol in format: /chart/xxx/EXCHANGE:SYMBOL/
+      const match = url.match(/\/chart\/[^\/]+\/([A-Z0-9]+:[A-Z0-9]+)/i);
+      if (match) return match[1];
+      // Also check for symbol=xxx in query string
+      const params = new URLSearchParams(window.location.search);
+      const sym = params.get('symbol');
+      if (sym) return sym;
+    } catch (e) {}
+    return '';
+  }
+
+  // Get the best available symbol
+  function getCurrentSymbol() {
+    if (lastSymbol) return lastSymbol;
+    const urlSymbol = getSymbolFromUrl();
+    if (urlSymbol) return urlSymbol;
+    return '';
+  }
+
   // Parse TradingView candle data from response
   function parseCandleData(url, data) {
     try {
@@ -195,9 +218,22 @@
               // Capture symbol from symbol_resolved message
               if (data.m === 'symbol_resolved' && data.p) {
                 const symbolData = data.p[1];
-                if (symbolData && symbolData.name) {
-                  lastSymbol = symbolData.name;
-                  log('Symbol resolved:', lastSymbol);
+                if (symbolData) {
+                  // Try different properties that might contain the symbol
+                  const sym = symbolData.name || symbolData.symbol || symbolData.full_name || symbolData.short_name;
+                  if (sym) {
+                    lastSymbol = sym;
+                    log('Symbol resolved:', lastSymbol);
+                  }
+                }
+              }
+
+              // Also capture from resolve_symbol requests
+              if (data.m === 'resolve_symbol' && data.p && data.p.length >= 2) {
+                const sym = data.p[1];
+                if (typeof sym === 'string' && sym.length > 0) {
+                  lastSymbol = sym;
+                  log('Symbol from resolve_symbol:', lastSymbol);
                 }
               }
 
@@ -211,6 +247,12 @@
                     lastResolution = String(res);
                     log('Resolution set:', lastResolution);
                   }
+                }
+                // Also try to extract symbol from create_series if present
+                if (params.length >= 2 && typeof params[1] === 'string' && !lastSymbol) {
+                  // Sometimes symbol is in params[1]
+                  lastSymbol = params[1];
+                  log('Symbol from create_series:', lastSymbol);
                 }
               }
 
@@ -258,11 +300,20 @@
     if (!Array.isArray(payload)) return;
 
     payload.forEach(item => {
-      if (item.sds_1 && item.sds_1.s) {
-        processSeriesData(item.sds_1);
-      }
+      // Try to extract symbol from the payload item keys
+      // Keys like "sds_sym_1" may contain symbol info
+      Object.keys(item).forEach(key => {
+        if (key.startsWith('sds_') || key.startsWith('st_')) {
+          const seriesData = item[key];
+          if (seriesData && seriesData.s && Array.isArray(seriesData.s)) {
+            processSeriesData(seriesData, false, key);
+          }
+        }
+      });
+
+      // Also check direct s array
       if (item.s && Array.isArray(item.s)) {
-        processSeriesData(item);
+        processSeriesData(item, false, '');
       }
     });
   }
@@ -282,8 +333,17 @@
   }
 
   // Process series data (OHLCV candles)
-  function processSeriesData(seriesObj, isRealtime = false) {
+  function processSeriesData(seriesObj, isRealtime = false, seriesName = '') {
     if (!seriesObj || !seriesObj.s || !Array.isArray(seriesObj.s)) return;
+
+    // Try to extract symbol from series name (e.g., "sds_sym_1" sometimes has symbol info)
+    let symbol = getCurrentSymbol();
+
+    // Also check if there's a symbol in the series object
+    if (seriesObj.ns && seriesObj.ns.d) {
+      // Sometimes the symbol is in ns.d
+      symbol = seriesObj.ns.d || symbol;
+    }
 
     const candles = [];
     seriesObj.s.forEach(bar => {
@@ -296,7 +356,7 @@
           low: bar.v[3],
           close: bar.v[4],
           volume: bar.v[5] || 0,
-          symbol: lastSymbol,
+          symbol: symbol,
           timeframe: lastResolution,
           isRealtime: isRealtime
         });
@@ -304,10 +364,10 @@
     });
 
     if (candles.length > 0) {
-      log('Processed', candles.length, 'candles, realtime:', isRealtime);
+      log('Processed', candles.length, 'candles for', symbol || '(unknown)', 'realtime:', isRealtime);
       relayToContentScript({
         candles: candles,
-        symbol: lastSymbol,
+        symbol: symbol,
         timeframe: lastResolution,
         isRealtime: isRealtime
       });
